@@ -1,15 +1,14 @@
 """
-Исправленная версия Telegram бота PassiveNFT для деплоя на Render
-Работает с оригинальной структурой конфигурации
+Финальная версия бота с очисткой состояния для решения конфликтов
 """
 import logging
-import json
+import asyncio
 import sqlite3
 from typing import Dict, Any
 from datetime import datetime
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 from config_deploy_new import *
 
@@ -26,11 +25,9 @@ class DatabaseManager:
         self.init_database()
     
     def init_database(self):
-        """Инициализация базы данных"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # Таблица пользователей
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -41,7 +38,6 @@ class DatabaseManager:
             )
         ''')
         
-        # Таблица подписок
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS subscriptions (
                 user_id INTEGER,
@@ -51,7 +47,6 @@ class DatabaseManager:
             )
         ''')
         
-        # Таблица рефералов
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS referrals (
                 referrer_id INTEGER,
@@ -66,7 +61,6 @@ class DatabaseManager:
         logger.info("База данных инициализирована")
     
     def get_user(self, user_id: int):
-        """Получить пользователя"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -75,7 +69,6 @@ class DatabaseManager:
         return user
     
     def create_user(self, user_id: int, username: str, first_name: str, referral_id: int = None):
-        """Создать пользователя"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute('''
@@ -86,7 +79,6 @@ class DatabaseManager:
         conn.close()
     
     def get_user_referrals(self, user_id: int):
-        """Получить рефералов пользователя"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute('''
@@ -116,21 +108,22 @@ class PassiveNFTBot:
         self.setup_handlers()
 
     def setup_handlers(self):
-        """Настройка обработчиков команд"""
         self.application.add_handler(CommandHandler("start", self.start_command))
-        
-        # Callback handlers
-        self.application.add_handler(CallbackQueryHandler(self.button_callback, pattern="^subscription_"))
-        self.application.add_handler(CallbackQueryHandler(self.button_callback, pattern="^ref_"))
-        self.application.add_handler(CallbackQueryHandler(self.admin_callback, pattern="^admin_"))
-        self.application.add_handler(CallbackQueryHandler(self.button_callback, pattern="^show_"))
+        self.application.add_handler(CallbackQueryHandler(self.button_callback))
+
+    async def clear_webhook_on_startup(self):
+        """Очистка webhook при запуске для избежания конфликтов"""
+        try:
+            logger.info("🧹 Очистка старых webhook'ов...")
+            await self.application.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("✅ Webhook очищен успешно")
+        except Exception as e:
+            logger.warning(f"⚠️ Предупреждение при очистке webhook: {e}")
 
     def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /start"""
         user = update.effective_user
         args = context.args
         
-        # Обработка реферальной ссылки
         referral_id = None
         if args:
             try:
@@ -138,7 +131,6 @@ class PassiveNFTBot:
             except (ValueError, IndexError):
                 pass
         
-        # Создаем пользователя в базе
         self.db.create_user(
             user_id=user.id,
             username=user.username or "",
@@ -146,16 +138,13 @@ class PassiveNFTBot:
             referral_id=referral_id
         )
         
-        # Создаем клавиатуру
         keyboard = [
             [InlineKeyboardButton("💎 Подписки", callback_data="show_subscriptions")],
             [InlineKeyboardButton("📞 Связь с менеджером", callback_data="show_contact")],
-            [InlineKeyboardButton("🔗 Реферальная система", callback_data="show_referrals")],
-            [InlineKeyboardButton("📊 Мой статус", callback_data="show_status")]
+            [InlineKeyboardButton("🔗 Реферальная система", callback_data="show_referrals")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Отправляем приветственное сообщение
         update.message.reply_text(
             self.config.WELCOME_MESSAGE,
             reply_markup=reply_markup,
@@ -163,7 +152,6 @@ class PassiveNFTBot:
         )
 
     def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик нажатий на кнопки"""
         query = update.callback_query
         query.answer()
         
@@ -173,20 +161,18 @@ class PassiveNFTBot:
             self.show_contact(query)
         elif query.data == "show_referrals":
             self.show_referrals(query)
-        elif query.data == "show_status":
-            self.show_status(query)
         elif query.data.startswith("subscription_"):
             subscription_type = query.data.replace("subscription_", "")
             self.show_subscription_details(query, subscription_type)
+        elif query.data == "buy_subscription":
+            self.show_buy_subscription(query)
     
     def show_subscriptions(self, query):
-        """Показать список подписок"""
         message = "💎 **Доступные подписки PassiveNFT**\n\n"
         
         for sub_type, sub_data in self.config.SUBSCRIPTIONS.items():
             message += f"**{sub_data['name']}** - {sub_data['price']} TON/месяц\n"
             message += f"• NFT в день: {sub_data.get('nft_per_day', 'N/A')}\n"
-            message += f"• Подарки в день: {sub_data.get('gifts_per_day', 'N/A')}\n"
             message += f"• ROI: {sub_data.get('roi_range', 'N/A')}\n\n"
         
         keyboard = []
@@ -196,8 +182,7 @@ class PassiveNFTBot:
                 callback_data=f"subscription_{sub_type}"
             )])
         
-        keyboard.append([InlineKeyboardButton("💰 Купить подписку", callback_data="buy_subscription")])
-        keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")])
+        keyboard.append([InlineKeyboardButton("💳 Купить подписку", callback_data="buy_subscription")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -208,7 +193,6 @@ class PassiveNFTBot:
         )
     
     def show_subscription_details(self, query, subscription_type):
-        """Показать детали конкретной подписки"""
         if subscription_type not in self.config.SUBSCRIPTIONS:
             query.answer("Неизвестный тип подписки")
             return
@@ -234,7 +218,7 @@ class PassiveNFTBot:
         message += f"🎯 **Потенциальная прибыль:** {sub_data.get('roi_range', 'N/A')}\n\n"
         
         keyboard = [
-            [InlineKeyboardButton("💳 Купить подписку", callback_data=f"buy_{subscription_type}")],
+            [InlineKeyboardButton("💳 Купить подписку", callback_data="buy_subscription")],
             [InlineKeyboardButton("🔙 К списку подписок", callback_data="show_subscriptions")]
         ]
         
@@ -247,11 +231,10 @@ class PassiveNFTBot:
         )
     
     def show_contact(self, query):
-        """Показать информацию о связи с менеджером"""
         message = self.config.CONTACT_MESSAGE
         keyboard = [
             [InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")]
+            [InlineKeyboardButton("🔙 Назад", callback_data="show_subscriptions")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -262,14 +245,12 @@ class PassiveNFTBot:
         )
     
     def show_referrals(self, query):
-        """Показать информацию о реферальной системе"""
         message = self.config.REFERRAL_MESSAGE
         
         user = query.from_user
         bot_username = self.config.BOT_USERNAME
         referral_link = f"https://t.me/{bot_username}?start={user.id}"
         
-        # Получаем статистику рефералов
         referral_stats = self.db.get_user_referrals(user.id)
         referrals_count = referral_stats[0] if referral_stats else 0
         total_commission = referral_stats[1] if referral_stats else 0
@@ -280,8 +261,7 @@ class PassiveNFTBot:
         message += f"• Общая комиссия: {total_commission:.2f} TON"
         
         keyboard = [
-            [InlineKeyboardButton("📊 Статистика рефералов", callback_data="referral_stats")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")]
+            [InlineKeyboardButton("🔙 Назад", callback_data="show_subscriptions")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -291,30 +271,25 @@ class PassiveNFTBot:
             parse_mode='Markdown'
         )
     
-    def show_status(self, query):
-        """Показать статус пользователя"""
-        user = query.from_user
-        user_data = self.db.get_user(user.id)
-        
-        if not user_data:
-            query.answer("Пользователь не найден")
-            return
-        
-        message = f"📊 **Ваш статус в PassiveNFT**\n\n"
-        message += f"👤 Пользователь: {user.first_name}\n"
-        message += f"📱 ID: {user.id}\n"
-        message += f"👥 Реферал: {user_data[3] if user_data[3] else 'Нет'}\n\n"
-        
-        # Получаем статистику рефералов
-        referral_stats = self.db.get_user_referrals(user.id)
-        if referral_stats and referral_stats[0] > 0:
-            message += f"🔗 **Ваши рефералы:** {referral_stats[0]}\n"
-            message += f"💰 Заработано: {referral_stats[1]:.2f} TON"
-        else:
-            message += "🔗 Рефералов пока нет"
+    def show_buy_subscription(self, query):
+        message = f"""💳 **Покупка подписки PassiveNFT**
+
+💰 Для оплаты используйте следующий адрес TON кошелька:
+
+`{self.config.TON_WALLET_ADDRESS}`
+
+📱 **Как оплатить:**
+1. Скопируйте адрес кошелька
+2. Откройте TON кошелек
+3. Отправьте нужную сумму
+4. Отправьте скриншот оплаты менеджеру: @{self.config.MANAGER_USERNAME}
+
+📞 **Поддержка:** @{self.config.MANAGER_USERNAME}
+
+⚡ После оплаты вы получите доступ к выбранной подписке!"""
         
         keyboard = [
-            [InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")]
+            [InlineKeyboardButton("🔙 Назад", callback_data="show_subscriptions")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -323,31 +298,35 @@ class PassiveNFTBot:
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
-    
-    def admin_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик админских функций"""
-        query = update.callback_query
-        query.answer()
-        user = query.from_user
-        
-        if user.id not in self.config.ADMIN_USER_IDS:
-            query.answer("Нет доступа")
-            return
-        
-        # Здесь можно добавить админские функции
-        query.edit_message_text("🔧 Админ панель в разработке")
 
-    def run(self):
-        """Запуск бота"""
+    async def run(self):
+        """Запуск бота с очисткой состояния"""
         logger.info("🚀 Запуск PassiveNFT Bot на Render...")
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
         logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
-        self.application.run_polling()
+        
+        # Очистка webhook перед запуском
+        await self.clear_webhook_on_startup()
+        
+        # Запуск polling
+        await self.application.initialize()
+        await self.application.start()
+        
+        try:
+            await self.application.updater.start_polling()
+            logger.info("✅ Бот запущен и ожидает команды...")
+            await self.application.idle()
+        except Exception as e:
+            logger.error(f"❌ Ошибка запуска бота: {e}")
+            raise
+        finally:
+            await self.application.stop()
+            await self.application.shutdown()
 
-def main():
-    """Главная функция"""
+async def main():
+    """Главная асинхронная функция"""
     bot = PassiveNFTBot()
-    bot.run()
+    await bot.run()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
