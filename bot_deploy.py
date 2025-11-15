@@ -1,387 +1,473 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-
-Исправленная версия Telegram бота PassiveNFT для деплоя на Render
-
-Работает с оригинальной структурой конфигурации
-
+PassiveNFT Bot - Render.com Deployment Version (Fixed)
+С исправленным методом запуска для новых версий python-telegram-bot
 """
-
+import asyncio
 import logging
-
-import json
-
 import sqlite3
+import sys
+import traceback
+from pathlib import Path
 
-from typing import Dict, Any
-
-from datetime import datetime
-
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-
-from config_deploy_new import *
-
-Настройка логирования
+# Настройка логирования
 logging.basicConfig(
-
-format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-
-level=logging.INFO
-
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
+logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(name)
-
-class DatabaseManager:
-
-def init(self, db_path: str):
-
-self.db_path = db_path
-
-self.init_database()
-
-def init_database(self):
-    """Инициализация базы данных"""
-    conn = sqlite3.connect(self.db_path)
-    cursor = conn.cursor()
+class Database:
+    """Простая SQLite база данных для хранения подписок"""
     
-    # Таблица пользователей
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            first_name TEXT,
-            referral_id INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    def __init__(self, db_path: str = "passive_nft_bot.db"):
+        self.db_path = db_path
+        self.init_database()
     
-    # Таблица подписок
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS subscriptions (
-            user_id INTEGER,
-            subscription_type TEXT,
-            purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (user_id)
-        )
-    ''')
-    
-    # Таблица рефералов
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS referrals (
-            referrer_id INTEGER,
-            referred_id INTEGER,
-            commission_amount REAL DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
-    logger.info("База данных инициализирована")
-
-def get_user(self, user_id: int):
-    """Получить пользователя"""
-    conn = sqlite3.connect(self.db_path)
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
-    user = cursor.fetchone()
-    conn.close()
-    return user
-
-def create_user(self, user_id: int, username: str, first_name: str, referral_id: int = None):
-    """Создать пользователя"""
-    conn = sqlite3.connect(self.db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT OR REPLACE INTO users (user_id, username, first_name, referral_id)
-        VALUES (?, ?, ?, ?)
-    ''', (user_id, username, first_name, referral_id))
-    conn.commit()
-    conn.close()
-
-def get_user_referrals(self, user_id: int):
-    """Получить рефералов пользователя"""
-    conn = sqlite3.connect(self.db_path)
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT COUNT(*) as count, COALESCE(SUM(commission_amount), 0) as total_commission
-        FROM referrals WHERE referrer_id = ?
-    ''', (user_id,))
-    result = cursor.fetchone()
-    conn.close()
-    return result
-class PassiveNFTBot:
-
-def init(self):
-
-self.config = type('Config', (), {
-
-'BOT_TOKEN': BOT_TOKEN,
-
-'ADMIN_USER_IDS': ADMIN_USER_IDS,
-
-'TON_WALLET_ADDRESS': TON_WALLET_ADDRESS,
-
-'MANAGER_USERNAME': MANAGER_USERNAME,
-
-'BOT_USERNAME': BOT_USERNAME,
-
-'WELCOME_MESSAGE': WELCOME_MESSAGE,
-
-'SUBSCRIPTIONS': SUBSCRIPTIONS,
-
-'CONTACT_MESSAGE': CONTACT_MESSAGE,
-
-'REFERRAL_MESSAGE': REFERRAL_MESSAGE,
-
-'DATABASE_PATH': DATABASE_PATH
-
-})()
-
-self.db = DatabaseManager(self.config.DATABASE_PATH)
-
-self.application = Application.builder().token(self.config.BOT_TOKEN).build()
-
-self.setup_handlers()
-
-def setup_handlers(self):
-    """Настройка обработчиков команд"""
-    self.application.add_handler(CommandHandler("start", self.start_command))
-    
-    # Callback handlers
-    self.application.add_handler(CallbackQueryHandler(self.button_callback, pattern="^subscription_"))
-    self.application.add_handler(CallbackQueryHandler(self.button_callback, pattern="^ref_"))
-    self.application.add_handler(CallbackQueryHandler(self.admin_callback, pattern="^admin_"))
-    self.application.add_handler(CallbackQueryHandler(self.button_callback, pattern="^show_"))
-
-def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /start"""
-    user = update.effective_user
-    args = context.args
-    
-    # Обработка реферальной ссылки
-    referral_id = None
-    if args:
+    def init_database(self):
+        """Инициализация базы данных"""
         try:
-            referral_id = int(args[0])
-        except (ValueError, IndexError):
-            pass
-    
-    # Создаем пользователя в базе
-    self.db.create_user(
-        user_id=user.id,
-        username=user.username or "",
-        first_name=user.first_name or "",
-        referral_id=referral_id
-    )
-    
-    # Создаем клавиатуру
-    keyboard = [
-        [InlineKeyboardButton("💎 Подписки", callback_data="show_subscriptions")],
-        [InlineKeyboardButton("📞 Связь с менеджером", callback_data="show_contact")],
-        [InlineKeyboardButton("🔗 Реферальная система", callback_data="show_referrals")],
-        [InlineKeyboardButton("📊 Мой статус", callback_data="show_status")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Отправляем приветственное сообщение
-    update.message.reply_text(
-        self.config.WELCOME_MESSAGE,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS subscriptions (
+                        user_id INTEGER PRIMARY KEY,
+                        subscription_type TEXT NOT NULL,
+                        start_date TEXT NOT NULL,
+                        active INTEGER DEFAULT 1
+                    )
+                ''')
+                conn.commit()
+                logger.info("База данных инициализирована")
+        except Exception as e:
+            logger.error(f"Ошибка инициализации базы данных: {e}")
+            raise
 
-def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик нажатий на кнопки"""
-    query = update.callback_query
-    query.answer()
+class SafeConfig:
+    """Безопасная конфигурация бота с fallback значениями"""
     
-    if query.data == "show_subscriptions":
-        self.show_subscriptions(query)
-    elif query.data == "show_contact":
-        self.show_contact(query)
-    elif query.data == "show_referrals":
-        self.show_referrals(query)
-    elif query.data == "show_status":
-        self.show_status(query)
-    elif query.data.startswith("subscription_"):
-        subscription_type = query.data.replace("subscription_", "")
-        self.show_subscription_details(query, subscription_type)
+    def __init__(self):
+        # Основные настройки
+        self.BOT_TOKEN = self._get_env_var('BOT_TOKEN', '8530441136:AAHto3A4Zqa5FnGG01cxL6SvU3jW8_Ai0iI')
+        self.ADMIN_USER_IDS = [8387394503]  # pro.player.egor
+        
+        # Настройки TON кошелька
+        self.TON_WALLET_ADDRESS = self._get_env_var('TON_WALLET_ADDRESS', 'UQAij8pQ3HhdBn3lw6n9Iy2toOH9OMcBuL8yoSXTNpLJdfZJ')
+        self.MANAGER_USERNAME = self._get_env_var('MANAGER_USERNAME', 'num6er9')
+        self.BOT_USERNAME = self._get_env_var('BOT_USERNAME', 'PassiveNFT')
+        
+        # Настройки подписок
+        self.SUBSCRIPTION_PLANS = [
+            {
+                "name": "на 150 человек",
+                "price_ton": 150,
+                "description": "Подписка на максимальное количество пользователей (150)"
+            },
+            {
+                "name": "на 100 человек", 
+                "price_ton": 100,
+                "description": "Подписка на стандартное количество пользователей (100)"
+            },
+            {
+                "name": "на 50 человек",
+                "price_ton": 50,
+                "description": "Подписка на базовое количество пользователей (50)"
+            }
+        ]
+        
+        # Тексты бота
+        self.WELCOME_MESSAGE = """🤖 Добро пожаловать в PassiveNFT Bot!
 
-def show_subscriptions(self, query):
-    """Показать список подписок"""
-    message = "💎 **Доступные подписки PassiveNFT**\n\n"
-    
-    for sub_type, sub_data in self.config.SUBSCRIPTIONS.items():
-        message += f"**{sub_data['name']}** - {sub_data['price']} TON/месяц\n"
-        message += f"• NFT в день: {sub_data.get('nft_per_day', 'N/A')}\n"
-        message += f"• Подарки в день: {sub_data.get('gifts_per_day', 'N/A')}\n"
-        message += f"• ROI: {sub_data.get('roi_range', 'N/A')}\n\n"
-    
-    keyboard = []
-    for sub_type in self.config.SUBSCRIPTIONS.keys():
-        keyboard.append([InlineKeyboardButton(
-            f"Подробнее: {self.config.SUBSCRIPTIONS[sub_type]['name']}",
-            callback_data=f"subscription_{sub_type}"
-        )])
-    
-    keyboard.append([InlineKeyboardButton("💰 Купить подписку", callback_data="buy_subscription")])
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query.edit_message_text(
-        message,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+💰 Этот бот позволяет получать пассивный доход от NFT коллекций
 
-def show_subscription_details(self, query, subscription_type):
-    """Показать детали конкретной подписки"""
-    if subscription_type not in self.config.SUBSCRIPTIONS:
-        query.answer("Неизвестный тип подписки")
-        return
-    
-    sub_data = self.config.SUBSCRIPTIONS[subscription_type]
-    
-    message = f"💎 **{sub_data['name']}**\n\n"
-    message += f"💰 **Цена:** {sub_data['price']} TON/месяц\n\n"
-    message += f"📊 **Статистика:**\n"
-    message += f"• NFT в день: {sub_data.get('nft_per_day', 'N/A')}\n"
-    message += f"• NFT в месяц: {sub_data.get('nft_per_month', 'N/A')}\n"
-    message += f"• Подарки в день: {sub_data.get('gifts_per_day', 'N/A')}\n"
-    message += f"• Подарки в месяц: {sub_data.get('gifts_per_month', 'N/A')}\n"
-    message += f"• Процент выигрышей NFT: {sub_data.get('nft_win_percentage', 'N/A')}%\n"
-    message += f"• Процент выигрышей подарков: {sub_data.get('gifts_win_percentage', 'N/A')}%\n\n"
-    
-    if 'min_refund' in sub_data:
-        message += f"💸 **Минимальный возврат:** {sub_data['min_refund']}\n\n"
-    
-    if 'refund' in sub_data:
-        message += f"💸 **Возврат:** {sub_data['refund']}\n\n"
-    
-    message += f"🎯 **Потенциальная прибыль:** {sub_data.get('roi_range', 'N/A')}\n\n"
-    
-    keyboard = [
-        [InlineKeyboardButton("💳 Купить подписку", callback_data=f"buy_{subscription_type}")],
-        [InlineKeyboardButton("🔙 К списку подписок", callback_data="show_subscriptions")]
-    ]
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query.edit_message_text(
-        message,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+🚀 Для начала работы выберите подписку:
 
-def show_contact(self, query):
-    """Показать информацию о связи с менеджером"""
-    message = self.config.CONTACT_MESSAGE
-    keyboard = [
-        [InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
-        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query.edit_message_text(
-        message,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+"""
 
-def show_referrals(self, query):
-    """Показать информацию о реферальной системе"""
-    message = self.config.REFERRAL_MESSAGE
-    
-    user = query.from_user
-    bot_username = self.config.BOT_USERNAME
-    referral_link = f"https://t.me/{bot_username}?start={user.id}"
-    
-    # Получаем статистику рефералов
-    referral_stats = self.db.get_user_referrals(user.id)
-    referrals_count = referral_stats[0] if referral_stats else 0
-    total_commission = referral_stats[1] if referral_stats else 0
-    
-    message += f"\n\n🔗 **Ваша реферальная ссылка:**\n`{referral_link}`\n\n"
-    message += f"📊 **Ваша статистика:**\n"
-    message += f"• Приглашено друзей: {referrals_count}\n"
-    message += f"• Общая комиссия: {total_commission:.2f} TON"
-    
-    keyboard = [
-        [InlineKeyboardButton("📊 Статистика рефералов", callback_data="referral_stats")],
-        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query.edit_message_text(
-        message,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+        self.SUBSCRIPTION_SELECTED_MESSAGE = """✅ Подписка "{plan_name}" выбрана
 
-def show_status(self, query):
-    """Показать статус пользователя"""
-    user = query.from_user
-    user_data = self.db.get_user(user.id)
-    
-    if not user_data:
-        query.answer("Пользователь не найден")
-        return
-    
-    message = f"📊 **Ваш статус в PassiveNFT**\n\n"
-    message += f"👤 Пользователь: {user.first_name}\n"
-    message += f"📱 ID: {user.id}\n"
-    message += f"👥 Реферал: {user_data[3] if user_data[3] else 'Нет'}\n\n"
-    
-    # Получаем статистику рефералов
-    referral_stats = self.db.get_user_referrals(user.id)
-    if referral_stats and referral_stats[0] > 0:
-        message += f"🔗 **Ваши рефералы:** {referral_stats[0]}\n"
-        message += f"💰 Заработано: {referral_stats[1]:.2f} TON"
-    else:
-        message += "🔗 Рефералов пока нет"
-    
-    keyboard = [
-        [InlineKeyboardButton("🔙 Назад", callback_data="back_to_start")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query.edit_message_text(
-        message,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+💰 Стоимость: {price} TON
+📝 Описание: {description}
 
-def admin_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик админских функций"""
-    query = update.callback_query
-    query.answer()
-    user = query.from_user
+Для завершения покупки:
+1. Отправьте {price} TON на адрес:{wallet_address}
+
+
+2. После оплаты нажмите кнопку "✅ Оплатил"
+3. Подписка будет активирована автоматически
+
+⚠️ Обязательно укажите в комментарии к платежу: {user_id}
+
+💬 Если есть вопросы - обращайтесь к менеджеру: @{manager_username}"""
+
+        self.PAYMENT_CONFIRMED_MESSAGE = """🎉 Оплата подтверждена!
+
+Ваша подписка "{plan_name}" успешно активирована на {duration}!
+
+📊 Статистика:
+👥 Лимит пользователей: {limit}
+💰 Стоимость подписки: {price} TON
+📅 Дата активации: {date}
+
+💡 Бот будет автоматически приносить пассивный доход от NFT"""
+
+        self.ALREADY_SUBSCRIBED_MESSAGE = """⚠️ У вас уже есть активная подписка!
+
+📊 Ваша текущая подписка:
+🏷️ Тип: "{current_plan}"
+📅 Активна до: {expiry_date}
+
+💡 Для продления обратитесь к менеджеру: @{manager_username}"""
+
+        self.ADMIN_MESSAGE = """🔧 Админ панель PassiveNFT Bot
+
+👥 Пользователей с подписками: {subscribers_count}
+💰 Общий доход: {total_revenue} TON
+
+📋 Последние подписки:"""
+
+        
+    def _get_env_var(self, var_name: str, default_value: str = None) -> str:
+        """Безопасное получение переменной окружения"""
+        import os
+        value = os.getenv(var_name, default_value)
+        if not value:
+            logger.warning(f"Переменная {var_name} не установлена, использую значение по умолчанию")
+        return value
     
-    if user.id not in self.config.ADMIN_USER_IDS:
-        query.answer("Нет доступа")
-        return
+    def get_admin_usernames(self):
+        """Получение списка админов по username (для отладки)"""
+        return ["pro.player.egor", "admin"]  # Добавляем возможные admin username'ы
+
+# Инициализация конфигурации
+try:
+    config = SafeConfig()
+    logger.info("✅ Безопасная конфигурация загружена")
+    logger.info(f"🤖 Бот: @{config.BOT_USERNAME}")
+    logger.info(f"💰 Кошелек: {config.TON_WALLET_ADDRESS[:10]}...{config.TON_WALLET_ADDRESS[-10:]}")
+except Exception as e:
+    logger.error(f"❌ Ошибка загрузки конфигурации: {e}")
+    config = SafeConfig()  # Fallback на стандартные значения
+
+
+class PassiveNFTBot:
+    """Главный класс бота с исправленным методом запуска"""
     
-    # Здесь можно добавить админские функции
-    query.edit_message_text("🔧 Админ панель в разработке")
+    def __init__(self):
+        self.config = config
+        self.database = Database()
+        self.application = None
+        self.setup_telegram_application()
+    
+    def setup_telegram_application(self):
+        """Настройка Telegram приложения"""
+        try:
+            from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+            from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+            
+            # Создание приложения
+            self.application = (
+                Application.builder()
+                .token(self.config.BOT_TOKEN)
+                .build()
+            )
+            
+            # Регистрация обработчиков
+            self.application.add_handler(CommandHandler("start", self.start_command))
+            self.application.add_handler(CommandHandler("help", self.help_command))
+            self.application.add_handler(CommandHandler("admin", self.admin_command))
+            self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription_"))
+            self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
+            self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
+            
+            logger.info("Telegram приложение настроено")
+            
+        except ImportError as e:
+            logger.error(f"Ошибка импорта telegram библиотек: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Ошибка настройки приложения: {e}")
+            raise
+    
+    async def clear_webhook_on_startup(self):
+        """Очистка webhook перед запуском для решения конфликтов"""
+        try:
+            logger.info("🧹 Очистка старых webhook'ов...")
+            await self.application.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("✅ Webhook очищен успешно")
+            await asyncio.sleep(2)  # Даем время Telegram API обновиться
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка при очистке webhook: {e}")
+    
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /start"""
+        user = update.effective_user
+        
+        # Проверяем, есть ли у пользователя активная подписка
+        subscription = self.get_user_subscription(user.id)
+        if subscription:
+            await update.message.reply_text(
+                self.config.ALREADY_SUBSCRIBED_MESSAGE.format(
+                    current_plan=subscription[1],
+                    expiry_date="безлимит",  # Можно добавить логику вычисления даты
+                    manager_username=self.config.MANAGER_USERNAME
+                ),
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Отправляем приветственное сообщение с выбором подписки
+        message = self.config.WELCOME_MESSAGE
+        keyboard = []
+        
+        for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
+            button_text = f"{plan['name']} - {plan['price_ton']} TON"
+            callback_data = f"subscription_{i}"
+            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(message, reply_markup=reply_markup, parse_mode='Markdown')
+    
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /help"""
+        help_text = """🤖 PassiveNFT Bot - Справка
 
-def run(self):
-    """Запуск бота"""
-    logger.info("🚀 Запуск PassiveNFT Bot на Render...")
-    logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
-    logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
-    self.application.run_polling()
-def main():
+💰 Этот бот предоставляет доступ к пассивному доходу от NFT коллекций
 
-"""Главная функция"""
+📋 Команды:
+/start - Начать работу с ботом
+/help - Показать эту справку
+/admin - Админ панель (только для админов)
 
-bot = PassiveNFTBot()
+💬 Для вопросов: @{manager_username}
 
-bot.run()
+💡 Выберите подписку и начните зарабатывать уже сегодня!"""
+        
+        await update.message.reply_text(help_text, parse_mode='Markdown')
+    
+    async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /admin"""
+        user = update.effective_user
+        
+        # Проверяем, является ли пользователь админом
+        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            return
+        
+        # Получаем статистику
+        stats = self.get_admin_stats()
+        
+        admin_text = self.config.ADMIN_MESSAGE.format(
+            subscribers_count=stats['subscribers_count'],
+            total_revenue=stats['total_revenue']
+        )
+        
+        await update.message.reply_text(admin_text, parse_mode='Markdown')
+    
+    async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик выбора подписки"""
+        query = update.callback_query
+        await query.answer()
+        
+        plan_index = int(query.data.split('_')[1])
+        plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+        
+        user = query.from_user
+        
+        message = self.config.SUBSCRIPTION_SELECTED_MESSAGE.format(
+            plan_name=plan['name'],
+            price=plan['price_ton'],
+            description=plan['description'],
+            wallet_address=self.config.TON_WALLET_ADDRESS,
+            user_id=user.id,
+            manager_username=self.config.MANAGER_USERNAME
+        )
+        
+        # Кнопка подтверждения оплаты
+        keyboard = [
+            [InlineKeyboardButton("✅ Оплатил", callback_data=f"payment_{plan_index}_{user.id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.message.edit_text(message, reply_markup=reply_markup, parse_mode='Markdown')
+    
+    async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик подтверждения оплаты"""
+        query = update.callback_query
+        await query.answer()
+        
+        parts = query.data.split('_')
+        plan_index = int(parts[1])
+        user_id = int(parts[2])
+        
+        plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+        
+        # Активируем подписку
+        self.activate_subscription(user_id, plan['name'])
+        
+        # Отправляем подтверждение
+        from datetime import datetime
+        confirmation_text = self.config.PAYMENT_CONFIRMED_MESSAGE.format(
+            plan_name=plan['name'],
+            duration="безлимит",
+            limit=plan['name'].split()[2],  # Извлекаем число из названия
+            price=plan['price_ton'],
+            date=datetime.now().strftime("%d.%m.%Y %H:%M")
+        )
+        
+        await query.message.edit_text(confirmation_text, parse_mode='Markdown')
+        
+        # Уведомляем админов
+        await self.notify_admins(user_id, plan['name'], plan['price_ton'])
+    
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик текстовых сообщений"""
+        message = update.message.text.lower()
+        
+        if "help" in message or "помощь" in message:
+            await self.help_command(update, context)
+        elif "admin" in message and update.effective_user.id in self.config.ADMIN_USER_IDS:
+            await self.admin_command(update, context)
+        else:
+            await update.message.reply_text(
+                "🤖 Используйте /start для начала работы или /help для справки",
+                parse_mode='Markdown'
+            )
+    
+    def get_user_subscription(self, user_id: int):
+        """Получение подписки пользователя"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM subscriptions WHERE user_id = ? AND active = 1",
+                    (user_id,)
+                )
+                return cursor.fetchone()
+        except Exception as e:
+            logger.error(f"Ошибка получения подписки: {e}")
+            return None
+    
+    def activate_subscription(self, user_id: int, plan_name: str):
+        """Активация подписки пользователя"""
+        try:
+            from datetime import datetime
+            
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR REPLACE INTO subscriptions (user_id, subscription_type, start_date, active) VALUES (?, ?, ?, ?)",
+                    (user_id, plan_name, datetime.now().isoformat(), 1)
+                )
+                conn.commit()
+                logger.info(f"Подписка активирована для пользователя {user_id}: {plan_name}")
+        except Exception as e:
+            logger.error(f"Ошибка активации подписки: {e}")
+    
+    def get_admin_stats(self):
+        """Получение статистики для админов"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Количество подписчиков
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE active = 1")
+                subscribers_count = cursor.fetchone()[0]
+                
+                # Примерный доход (сумма всех подписок)
+                cursor.execute("SELECT subscription_type FROM subscriptions WHERE active = 1")
+                plans = cursor.fetchall()
+                
+                total_revenue = 0
+                for plan in plans:
+                    for plan_config in self.config.SUBSCRIPTION_PLANS:
+                        if plan[0] == plan_config['name']:
+                            total_revenue += plan_config['price_ton']
+                            break
+                
+                return {
+                    'subscribers_count': subscribers_count,
+                    'total_revenue': total_revenue
+                }
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики: {e}")
+            return {'subscribers_count': 0, 'total_revenue': 0}
+    
+    async def notify_admins(self, user_id: int, plan_name: str, amount: int):
+        """Уведомление админов о новой подписке"""
+        try:
+            for admin_id in self.config.ADMIN_USER_IDS:
+                try:
+                    await self.application.bot.send_message(
+                        chat_id=admin_id,
+                        text=f"🎉 Новая подписка!\n\n👤 Пользователь: {user_id}\n📦 План: {plan_name}\n💰 Сумма: {amount} TON"
+                    )
+                except Exception as e:
+                    logger.warning(f"Не удалось уведомить админа {admin_id}: {e}")
+        except Exception as e:
+            logger.error(f"Ошибка уведомления админов: {e}")
+    
+    async def run(self):
+        """Запуск бота с исправленным методом - ИСПРАВЛЕНО"""
+        logger.info("🚀 Запуск PassiveNFT Bot на Render...")
+        logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
+        logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
+        
+        # Очистка webhook перед запуском
+        await self.clear_webhook_on_startup()
+        
+        # Инициализация и запуск приложения
+        await self.application.initialize()
+        await self.application.start()
+        
+        try:
+            # Запуск polling с современным подходом
+            await self.application.updater.start_polling()
+            logger.info("✅ Бот запущен и ожидает команды...")
+            
+            # Вместо устаревшего .idle() используем Event.wait()
+            # Это позволяет боту работать бесконечно до остановки
+            await asyncio.Event().wait()
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка запуска бота: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
+        finally:
+            # Корректная остановка бота
+            try:
+                if self.application.updater.running:
+                    self.application.updater.stop()
+                await self.application.stop()
+                await self.application.shutdown()
+                logger.info("✅ Бот корректно остановлен")
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка при остановке: {e}")
 
-if name == "main":
 
-main()
+async def main():
+    """Главная функция запуска"""
+    try:
+        bot = PassiveNFTBot()
+        await bot.run()
+    except KeyboardInterrupt:
+        logger.info("👋 Получен сигнал остановки")
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("👋 Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска: {e}")
+        sys.exit(1)
