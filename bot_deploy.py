@@ -11,6 +11,10 @@ import sys
 import traceback
 from pathlib import Path
 
+# Импорты Telegram бота - ПЕРЕМЕЩЕНЫ В ГЛОБАЛЬНУЮ ОБЛАСТЬ
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -166,8 +170,6 @@ class PassiveNFTBot:
     def setup_telegram_application(self):
         """Настройка Telegram приложения"""
         try:
-            from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-            from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
             
             # Создание приложения
             self.application = (
