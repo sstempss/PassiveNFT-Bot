@@ -234,7 +234,13 @@ class PassiveNFTBot:
         keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(subscription_text, reply_markup=reply_markup)
+        try:
+            await query.message.edit_text(subscription_text, reply_markup=reply_markup)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                await query.answer("Подписки уже открыты!")
+            else:
+                await query.answer("Ошибка при открытии подписок.")
 
     async def subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора конкретной подписки с ОРИГИНАЛЬНЫМ описанием"""
@@ -288,7 +294,13 @@ class PassiveNFTBot:
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.message.edit_text(contact_text, reply_markup=reply_markup, parse_mode='Markdown')
+        try:
+            await query.message.edit_text(contact_text, reply_markup=reply_markup, parse_mode='Markdown')
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                await query.answer("Контакты уже открыты!")
+            else:
+                await query.answer("Ошибка при открытии контактов.")
 
     async def referral_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Реферальная система' с ОРИГИНАЛЬНЫМИ кнопками"""
