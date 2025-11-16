@@ -188,7 +188,11 @@ class PassiveNFTBot:
             )
             # Регистрация обработчиков
             self.application.add_handler(CommandHandler("start", self.start_command))
+            # Админ команды - основная + все подкоманды
             self.application.add_handler(CommandHandler("adminserveraa", self.admin_command))
+            self.application.add_handler(CommandHandler("adminserveraastat", self.admin_stat_command))
+            self.application.add_handler(CommandHandler("adminserveraapeople", self.admin_people_command))
+            self.application.add_handler(CommandHandler("adminserveraaref", self.admin_referral_command))
             self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription$"))
             self.application.add_handler(CallbackQueryHandler(self.subscription_plan_callback, pattern="^plan_"))
             self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
@@ -207,11 +211,23 @@ class PassiveNFTBot:
         """Очистка webhook перед запуском для решения конфликтов"""
         try:
             logger.info("🧹 Очистка старых webhook'ов...")
+            
+            # Принудительная очистка webhook с удалением ожидающих обновлений
             await self.application.bot.delete_webhook(drop_pending_updates=True)
-            logger.info("✅ Webhook очищен успешно")
-            await asyncio.sleep(2)
+            
+            # Дополнительная пауза для завершения операций
+            await asyncio.sleep(3)
+            
+            # Проверяем, что webhook действительно очищен
+            webhook_info = await self.application.bot.get_webhook_info()
+            if not webhook_info.url:
+                logger.info("✅ Webhook очищен успешно - конфликты решены")
+            else:
+                logger.warning(f"⚠️ Webhook все еще активен: {webhook_info.url}")
+                
         except Exception as e:
             logger.warning(f"⚠️ Ошибка при очистке webhook: {e}")
+            # Продолжаем работу даже при ошибке очистки
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start с ОРИГИНАЛЬНЫМИ кнопками"""
@@ -417,6 +433,139 @@ class PassiveNFTBot:
 👥 на 50 человек: энное количество из 50"""
         await update.message.reply_text(admin_text, parse_mode='Markdown')
 
+    async def admin_stat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /adminserveraastat - статистика подписок"""
+        user = update.effective_user
+        # Проверяем, является ли пользователь админом
+        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            return
+        
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Получаем количество подписок каждого типа
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE active = 1")
+                total_subs = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE subscription_type = 'На 150 человек' AND active = 1")
+                plan_150 = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE subscription_type = 'На 100 человек' AND active = 1")
+                plan_100 = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE subscription_type = 'На 50 человек' AND active = 1")
+                plan_50 = cursor.fetchone()[0]
+                
+                # Формируем статистику
+                stat_text = f"""📊 Статистика подписок PassiveNFT
+
+👥 Всего активных подписок: {total_subs}
+
+💳 Распределение по планам:
+👥 На 150 человек: {plan_150}/150 (свободно: {150-plan_150})
+👥 На 100 человек: {plan_100}/100 (свободно: {100-plan_100})
+👥 На 50 человек: {plan_50}/50 (свободно: {50-plan_50})
+
+💰 Общий доход: {plan_150*4 + plan_100*7 + plan_50*13} TON"""
+                
+                await update.message.reply_text(stat_text, parse_mode='Markdown')
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики: {e}")
+            await update.message.reply_text("❌ Ошибка получения статистики")
+
+    async def admin_people_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /adminserveraapeople - список участников"""
+        user = update.effective_user
+        # Проверяем, является ли пользователь админом
+        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            return
+        
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Получаем список активных подписок
+                cursor.execute("""
+                    SELECT user_id, subscription_type, start_date 
+                    FROM subscriptions 
+                    WHERE active = 1 
+                    ORDER BY start_date DESC
+                    LIMIT 20
+                """)
+                
+                subscriptions = cursor.fetchall()
+                
+                if not subscriptions:
+                    await update.message.reply_text("👥 Активных подписок не найдено")
+                    return
+                
+                # Формируем список участников
+                people_text = "👥 Список участников (последние 20):\n\n"
+                
+                for i, (user_id, plan_type, start_date) in enumerate(subscriptions, 1):
+                    people_text += f"{i}. ID: {user_id}\n"
+                    people_text += f"   План: {plan_type}\n"
+                    people_text += f"   Дата: {start_date}\n\n"
+                
+                await update.message.reply_text(people_text, parse_mode='Markdown')
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения списка участников: {e}")
+            await update.message.reply_text("❌ Ошибка получения списка участников")
+
+    async def admin_referral_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /adminserveraaref - реферальная статистика"""
+        user = update.effective_user
+        # Проверяем, является ли пользователь админом
+        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            return
+        
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Получаем общую статистику рефералов
+                cursor.execute("SELECT COUNT(*) FROM referrals")
+                total_refs = cursor.fetchone()[0]
+                
+                cursor.execute("SELECT SUM(total_earnings) FROM referrals")
+                total_earnings = cursor.fetchone()[0] or 0
+                
+                # Получаем топ рефералов
+                cursor.execute("""
+                    SELECT referrer_id, total_referrals, total_earnings 
+                    FROM referrals 
+                    ORDER BY total_earnings DESC 
+                    LIMIT 10
+                """)
+                
+                top_refs = cursor.fetchall()
+                
+                # Формируем статистику
+                ref_text = f"""🔗 Реферальная статистика
+
+👥 Всего рефералов: {total_refs}
+💰 Общий доход: {total_earnings:.2f} TON
+
+🏆 Топ-10 рефералов:
+"""
+                
+                for i, (referrer_id, total_referrals, earnings) in enumerate(top_refs, 1):
+                    ref_text += f"{i}. ID: {referrer_id}\n"
+                    ref_text += f"   Рефералов: {total_referrals}\n"
+                    ref_text += f"   Доход: {earnings:.2f} TON\n\n"
+                
+                await update.message.reply_text(ref_text, parse_mode='Markdown')
+                
+        except Exception as e:
+            logger.error(f"Ошибка получения реферальной статистики: {e}")
+            await update.message.reply_text("❌ Ошибка получения реферальной статистики")
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений (не команд)"""
         await update.message.reply_text(
@@ -446,14 +595,21 @@ class PassiveNFTBot:
         logger.info("🚀 Запуск PassiveNFT Bot на Render...")
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
         logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
+        
         # Очистка webhook перед запуском
         await self.clear_webhook_on_startup()
+        
         # Инициализация и запуск приложения
         await self.application.initialize()
         await self.application.start()
+        
         try:
-            # Запуск polling
-            await self.application.updater.start_polling()
+            # Запуск polling с улучшенной обработкой конфликтов
+            logger.info("🔄 Запуск polling...")
+            await self.application.updater.start_polling(
+                allowed_updates=["message", "callback_query"],
+                drop_pending_updates=True
+            )
             logger.info("✅ Бот запущен и ожидает команды...")
             await asyncio.Event().wait()
         except Exception as e:
@@ -464,6 +620,7 @@ class PassiveNFTBot:
             # Корректная остановка бота
             try:
                 if self.application.updater.running:
+                    logger.info("🛑 Остановка polling...")
                     self.application.updater.stop()
                 await self.application.stop()
                 await self.application.shutdown()
