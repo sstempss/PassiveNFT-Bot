@@ -391,14 +391,12 @@ async def subscription_callback(self, update: Update, context: ContextTypes.DEFA
             # Сообщение не изменилось, просто отвечаем на callback
             await query.answer()
 
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /help"""
         help_text = """🤖 PassiveNFT Bot - Справка
-
 /start - Начать работу с ботом
 /help - Показать эту справку
 /adminserveraa - Админ панель (только для админов)
-
 💬 Для вопросов: @{manager_username}""".replace("@{manager_username}", f"@{self.config.MANAGER_USERNAME}")
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
