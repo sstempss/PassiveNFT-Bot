@@ -271,14 +271,14 @@ class PassiveNFTBot:
         await query.message.edit_text(plan_text, reply_markup=reply_markup)
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Оплатить'"""
-        query = update.callback_query
-        await query.answer()
+            """Обработчик кнопки 'Оплатить'"""
+            query = update.callback_query
+            await query.answer()
     
-    plan_index = int(query.data.split('_')[1])
-    plan = self.config.SUBSCRIPTION_PLANS[plan_index]
-    price = plan['price']
-    wallet_address = self.config.TON_WALLET_ADDRESS
+            plan_index = int(query.data.split('_')[1])
+            plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+            price = plan['price']
+            wallet_address = self.config.TON_WALLET_ADDRESS
     
     payment_text = f"""💰 ОПЛАТА: {price} TON
 
