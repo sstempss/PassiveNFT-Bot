@@ -392,8 +392,8 @@ async def subscription_callback(self, update: Update, context: ContextTypes.DEFA
             await query.answer()
 
         async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /help"""
-        help_text = """🤖 PassiveNFT Bot - Справка
+            """Обработчик команды /help"""
+            help_text = """🤖 PassiveNFT Bot - Справка
 /start - Начать работу с ботом
 /help - Показать эту справку
 /adminserveraa - Админ панель (только для админов)
