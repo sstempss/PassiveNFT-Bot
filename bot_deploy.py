@@ -215,32 +215,28 @@ class PassiveNFTBot:
         
         await update.message.reply_text(welcome_text, reply_markup=reply_markup)
 
-    async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Подписки' - ОРИГИНАЛЬНОЕ описание"""
-        query = update.callback_query
-        await query.answer()
-        
-        # ОРИГИНАЛЬНОЕ общее описание подписок
-       subscription_text = self.config.SUBSCRIPTION_DESCRIPTION
-        
-        # ОРИГИНАЛЬНЫЕ кнопки подписок
-        keyboard = []
-        for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
-            button_text = plan['name']
-            callback_data = f"plan_{i}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-        
-        # Кнопка "Назад"
-        keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        try:
-            await query.message.edit_text(subscription_text, reply_markup=reply_markup)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                await query.answer("Подписки уже открыты!")
-            else:
-                await query.answer("Ошибка при открытии подписок.")
+async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик кнопки 'Подписки' - ОРИГИНАЛЬНОЕ описание"""
+    query = update.callback_query
+    await query.answer()
+    # ОРИГИНАЛЬНОЕ общее описание подписок
+    subscription_text = self.config.SUBSCRIPTION_DESCRIPTION
+    # ОРИГИНАЛЬНЫЕ кнопки подписок
+    keyboard = []
+    for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
+        button_text = plan['name']
+        callback_data = f"plan_{i}"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+    # Кнопка "Назад"
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    try:
+        await query.message.edit_text(subscription_text, reply_markup=reply_markup)
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            await query.answer("Подписки уже открыты!")
+        else:
+            await query.answer("Ошибка при открытии подписок.")
 
     async def subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора конкретной подписки с ОРИГИНАЛЬНЫМ описанием"""
