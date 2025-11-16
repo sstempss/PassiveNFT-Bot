@@ -271,15 +271,16 @@ class PassiveNFTBot:
         await query.message.edit_text(plan_text, reply_markup=reply_markup)
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """Обработчик кнопки 'Оплатить'"""
-            query = update.callback_query
-            await query.answer()
+    """Обработчик кнопки 'Оплатить' с ОРИГИНАЛЬНОЙ инструкцией"""
+    query = update.callback_query
+    await query.answer()
     
-            plan_index = int(query.data.split('_')[1])
-            plan = self.config.SUBSCRIPTION_PLANS[plan_index]
-            price = plan['price']
-            wallet_address = self.config.TON_WALLET_ADDRESS
+    plan_index = int(query.data.split('_')[1])
+    plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+    price = plan['price']
+    wallet_address = self.config.TON_WALLET_ADDRESS
     
+    # ОРИГИНАЛЬНАЯ инструкция по оплате
     payment_text = f"""💰 ОПЛАТА: {price} TON
 
 Адрес кошелька: <a href="ton://transfer/{wallet_address}?amount=0">{wallet_address}</a>
@@ -288,13 +289,7 @@ class PassiveNFTBot:
 
 После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
     
-    keyboard = [
-        [InlineKeyboardButton("🔙 Назад", callback_data=f"plan_{plan_index}")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    try:
-        await query.message.edit_text(payment_text, parse_mode='HTML', reply_markup=reply_markup)
+    await query.message.edit_text(payment_text, parse_mode='HTML')
     except BadRequest as e:
         if "Message is not modified" in str(e):
             await query.answer("Информация об оплате уже отображена!")
