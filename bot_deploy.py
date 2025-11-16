@@ -463,8 +463,7 @@ class PassiveNFTBot:
         people = self.get_all_users()
         
         if people:
-            people_text = "👥 Список участников PassiveNFT Bot:
-\n"
+            people_text = "👥 Список участников PassiveNFT Bot:\n"
             for i, person in enumerate(people, 1):
                 people_text += f"{i}. ID: {person[0]}, Подписка: {person[1]}\n"
             people_text += f"\n📊 Всего участников: {len(people)}"
