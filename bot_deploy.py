@@ -221,11 +221,11 @@ class PassiveNFTBot:
         await query.answer()
         
         # ОРИГИНАЛЬНОЕ общее описание подписок
-        subscription_text = self.SUBSCRIPTION_DESCRIPTION
+       subscription_text = self.config.SUBSCRIPTION_DESCRIPTION
         
         # ОРИГИНАЛЬНЫЕ кнопки подписок
         keyboard = []
-        for i, plan in enumerate(self.SUBSCRIPTION_PLANS):
+        for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
             button_text = plan['name']
             callback_data = f"plan_{i}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
