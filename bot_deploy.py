@@ -174,7 +174,6 @@ class PassiveNFTBot:
             )
             # Регистрация обработчиков
             self.application.add_handler(CommandHandler("start", self.start_command))
-            self.application.add_handler(CommandHandler("adminserveraa", self.admin_command))
             self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription$"))
             self.application.add_handler(CallbackQueryHandler(self.subscription_plan_callback, pattern="^plan_"))
             self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
