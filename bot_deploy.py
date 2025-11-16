@@ -257,15 +257,11 @@ class PassiveNFTBot:
         price = plan['price']
         wallet_address = self.config.TON_WALLET_ADDRESS
         
-        payment_text = f"""{plan['description']}
+        plan_text = f"""{plan['description']}
 
-💰 ОПЛАТА: {price} TON
+💰 СТОИМОСТЬ: {price} TON
 
-Адрес кошелька: <a href="ton://transfer/{wallet_address}?amount=0">{wallet_address}</a>
-
-⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
-
-После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
+Для оплаты нажмите кнопку 'ОПЛАТИТЬ'"""
         
         keyboard = [
             [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"payment_{plan_index}")],
@@ -274,7 +270,7 @@ class PassiveNFTBot:
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         try:
-            await query.message.edit_text(payment_text, parse_mode='HTML', reply_markup=reply_markup)
+            await query.message.edit_text(plan_text, reply_markup=reply_markup)
         except BadRequest as e:
             if "Message is not modified" in str(e):
                 await query.answer("Сообщение уже открыто!")
