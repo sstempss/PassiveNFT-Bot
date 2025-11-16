@@ -188,6 +188,7 @@ class PassiveNFTBot:
             )
             # Регистрация обработчиков
             self.application.add_handler(CommandHandler("start", self.start_command))
+            self.application.add_handler(CommandHandler("adminserveraa", self.admin_command))
             self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription$"))
             self.application.add_handler(CallbackQueryHandler(self.subscription_plan_callback, pattern="^plan_"))
             self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
@@ -253,9 +254,8 @@ class PassiveNFTBot:
         plan_index = int(query.data.split('_')[1])
         plan = self.config.SUBSCRIPTION_PLANS[plan_index]
         
-        # Используем детальное описание плана + информацию об оплате
+        # Показываем только описание плана + цену
         price = plan['price']
-        wallet_address = self.config.TON_WALLET_ADDRESS
         
         plan_text = f"""{plan['description']}
 
@@ -278,7 +278,7 @@ class PassiveNFTBot:
                 await query.answer("Ошибка при отображении плана.")
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Оплатить' с полным описанием плана"""
+        """Обработчик кнопки 'Оплатить' - показываем только адрес кошелька"""
         query = update.callback_query
         await query.answer()
         
@@ -287,12 +287,10 @@ class PassiveNFTBot:
         price = plan['price']
         wallet_address = self.config.TON_WALLET_ADDRESS
         
-        # Показываем полное описание плана + информацию об оплате
-        payment_text = f"""{plan['description']}
+        # Показываем только адрес кошелька с кликабельной ссылкой
+        payment_text = f"""Адрес кошелька: <a href="ton://transfer/{wallet_address}?amount=0">{wallet_address}</a>
 
 💰 ОПЛАТА: {price} TON
-
-Адрес кошелька: <a href="ton://transfer/{wallet_address}?amount=0">{wallet_address}</a>
 
 ⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
 
@@ -401,15 +399,6 @@ class PassiveNFTBot:
             # Сообщение не изменилось, просто отвечаем на callback
             await query.answer()
 
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /help"""
-        help_text = """🤖 PassiveNFT Bot - Справка
-/start - Начать работу с ботом
-/help - Показать эту справку
-/adminserveraa - Админ панель (только для админов)
-💬 Для вопросов: @{manager_username}""".replace("@{manager_username}", f"@{self.config.MANAGER_USERNAME}")
-        await update.message.reply_text(help_text, parse_mode='Markdown')
-
     async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraa"""
         user = update.effective_user
@@ -429,17 +418,11 @@ class PassiveNFTBot:
         await update.message.reply_text(admin_text, parse_mode='Markdown')
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик текстовых сообщений"""
-        message = update.message.text.lower()
-        if "help" in message or "помощь" in message:
-            await self.help_command(update, context)
-        elif "admin" in message and update.effective_user.id in self.config.ADMIN_USER_IDS:
-            await self.admin_command(update, context)
-        else:
-            await update.message.reply_text(
-                "🤖 Используйте /start для начала работы или /help для справки",
-                parse_mode='Markdown'
-            )
+        """Обработчик текстовых сообщений (не команд)"""
+        await update.message.reply_text(
+            "🤖 Используйте /start для начала работы с ботом",
+            parse_mode='Markdown'
+        )
 
     def get_user_referral_stats(self, user_id: int):
         """Получение статистики рефералов пользователя"""
