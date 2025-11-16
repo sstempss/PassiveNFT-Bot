@@ -263,7 +263,7 @@ class PassiveNFTBot:
         
         # ОРИГИНАЛЬНЫЕ кнопки: "Оплатить" и "Назад"
         keyboard = [
-            [InlineKeyboardButton("💳 Оплатить", callback_data=f"payment_{plan_index}")],
+            [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"payment_{plan_index}")],
             [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -271,35 +271,35 @@ class PassiveNFTBot:
         await query.message.edit_text(plan_text, reply_markup=reply_markup)
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Оплатить' с ОРИГИНАЛЬНОЙ инструкцией"""
-        query = update.callback_query
-        await query.answer()
-        
-        plan_index = int(query.data.split('_')[1])
-        plan = self.config.SUBSCRIPTION_PLANS[plan_index]
-        
-        # ОРИГИНАЛЬНАЯ инструкция по оплате
-        payment_text = f"""💰 ОПЛАТА: {price} TON
+    """Обработчик кнопки 'Оплатить'"""
+    query = update.callback_query
+    await query.answer()
+    
+    plan_index = int(query.data.split('_')[1])
+    plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+    price = plan['price']
+    wallet_address = self.config.TON_WALLET_ADDRESS
+    
+    payment_text = f"""💰 ОПЛАТА: {price} TON
 
 Адрес кошелька: <a href="ton://transfer/{wallet_address}?amount=0">{wallet_address}</a>
 
 ⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
 
 После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
-        
-        await query.message.edit_text(payment_text)
-
-    async def contact_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Связь' с ОРИГИНАЛЬНЫМ текстом"""
-        query = update.callback_query
-        await query.answer()
-        
-        # ОРИГИНАЛЬНЫЙ текст связи с ссылкой
-        contact_text = self.config.CONTACT_MESSAGE
-        
-        # Кнопка "Назад"
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    keyboard = [
+        [InlineKeyboardButton("🔙 Назад", callback_data=f"plan_{plan_index}")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    try:
+        await query.message.edit_text(payment_text, parse_mode='HTML', reply_markup=reply_markup)
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            await query.answer("Информация об оплате уже отображена!")
+        else:
+            await query.answer("Ошибка при отображении информации.")
         
         try:
             await query.message.edit_text(contact_text, reply_markup=reply_markup, parse_mode='Markdown')
