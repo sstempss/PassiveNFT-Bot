@@ -13,7 +13,6 @@ from pathlib import Path
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.error import BadRequest
-
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
@@ -29,7 +28,6 @@ class Database:
     def __init__(self, db_path: str = "passive_nft_bot.db"):
         self.db_path = db_path
         self.init_database()
-
     def init_database(self):
         """Инициализация базы данных"""
         try:
@@ -64,92 +62,55 @@ class SafeConfig:
         # Основные настройки
         self.BOT_TOKEN = self._get_env_var('BOT_TOKEN', '8530441136:AAHto3A4Zqa5FnGG01cxL6SvU3jW8_Ai0iI')
         self.ADMIN_USER_IDS = [8387394503] # pro.player.egor
-
         # Настройки TON кошелька
         self.TON_WALLET_ADDRESS = self._get_env_var('TON_WALLET_ADDRESS', 'UQAij8pQ3HhdBn3lw6n9Iy2toOH9OMcBuL8yoSXTNpLJdfZJ')
         self.MANAGER_USERNAME = self._get_env_var('MANAGER_USERNAME', 'num6er9')
         self.BOT_USERNAME = self._get_env_var('BOT_USERNAME', 'PassiveNFT')
-
+        
         # Настройки подписок - ОРИГИНАЛЬНЫЕ НАЗВАНИЯ И ОПИСАНИЯ
         self.SUBSCRIPTION_PLANS = [
             {
-                "name": "на 150 человек",
-                "description": """🖼️ 5 NFT в день, 4 гифта в день 🖼️
-                
-📅 150 NFT в месяц, 120 гифтов в месяц
-
-📊 Процент победы одного участника составляет 0,67% на одно NFT, количество разыгрываемых NFT в день – 5, следственно 5*0,67% = 3,35% на победу за день, в месяц получается 100,5%
-
-🎁 На гифты за звезды процент победы на одного участника составляет 0,67%, количество разыгрываемых гифтов в день – 4, следственно 4*0,67% = 2,68% на победу за день, в месяц получается 80,4%
-
-💰 ~ окуп от х1 до х5""",
-                "price_ton": 4
+                "name": "👥 На 150 человек",
+                "price": "4"
             },
             {
-                "name": "на 100 человек",
-                "description": """🖼️ 6 NFT в день, 4 гифта в день 🖼️
-                
-📅 180 NFT в месяц, 120 гифтов в месяц
-
-📊 Процент победы одного участника составляет 1% на одно NFT, количество разыгрываемых NFT в день – 6, следственно 6*1% = 6% на победу за день, в месяц получается 180%
-
-🎁 На гифты за звезды процент победы на одного участника составляет 0,67%, количество разыгрываемых гифтов в день – 4, следственно 4*1% = 4% на победу за день, в месяц получается 120%
-
-💵 Один человек минимально получает возврат средств в 50% от стоимости подписки в месяц (в размере 1 NFT+гифт за 50 зв.)
-
-💰 ~ окуп от х1 до х8""",
-                "price_ton": 7
+                "name": "👥 На 100 человек", 
+                "price": "7"
             },
             {
-                "name": "на 50 человек",
-                "description": """🖼️ 7 NFT в день, 4 гифта в день 🖼️
-                
-📅 210 NFT в месяц, 120 гифтов в месяц
-
-📊 Процент победы одного участника составляет 1% на одно NFT, количество разыгрываемых NFT в день – 7, следственно 7*2% = 14% на победу за день, в месяц получается 420%
-
-🎁 На гифты за звезды процент победы на одного участника составляет 2%, количество разыгрываемых гифтов в день – 4, следственно 4*2% = 8% на победу за день, в месяц получается 240%
-
-💰 На одного участника в ТГК получается возврат средств в 70% от стоимости подписки в месяц (в размере 4 NFT+ 2 гифта за 50 зв.)
-
-💰 ~ окуп от х1 до х2,5-3""",
-                "price_ton": 13
+                "name": "👥 На 50 человек",
+                "price": "13"
             }
         ]
-
+        
         # ОРИГИНАЛЬНЫЕ ТЕКСТЫ БОТА
         self.WELCOME_MESSAGE = """🎉 welcome to the PassiveNFT 🎉
-        
-💰 !PassiveNFT это возможность ПРИУМНОЖИТЬ свои вложения вплоть до х10! �
-�
+💰 !PassiveNFT это возможность ПРИУМНОЖИТЬ свои вложения вплоть до х10! 
+
 📋 ознакомиться со стоимостью подписок и что в них входит вы можете по кнопке "Подписки".
-
 ❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам."""
-
+        
         # 2. ОБЩЕЕ ОПИСАНИЕ ПОДПИСОК (Пункт 2.1)
         self.SUBSCRIPTION_DESCRIPTION = "💳 Нажми на интересующую тебя подписку"
-
+        
         # 3. ТЕКСТ СВЯЗИ (Пункт 3)
         self.CONTACT_MESSAGE = f"""💬 Если у вас возникли какие-либо трудности с оплатой или есть вопросы на которые здесь нет ответов, нажмите [сюда](https://t.me/{self.MANAGER_USERNAME}) для обращения к менеджеру по вопросам."""
-
+        
         # 4. РЕФЕРАЛЬНАЯ СИСТЕМА - ГЛАВНОЕ МЕНЮ (Пункт 4)
         self.REFERRAL_MESSAGE = f"""👥 Реферальная система предназначена для амбассадоров закрытого проекта PassiveNFT и обычных участников
-
 🔗 Она состоит из пригласительной ссылки, где владелец ссылки получается 10% с его оплаты подписки, для более точных подробностей свяжитесь с [менеджером](https://t.me/{self.MANAGER_USERNAME})"""
-
+        
         # 5. РЕФЕРАЛЬНАЯ ССЫЛКА
         self.REFERRAL_LINK_MESSAGE = "Ваша персональная реферальная ссылка: https://t.me/{bot_username}?start=ref_{user_id}"
-
+        
         # 6. СТАТИСТИКА РЕФЕРАЛОВ
         self.REFERRAL_STATS_MESSAGE = """Статистика ваших рефералов:
-
 {referrals_info}"""
-
+        
         # 7. СООБЩЕНИЕ ОБ ОПЛАТЕ
         self.PAYMENT_INSTRUCTIONS = f"""Для оплаты отправьте {self.TON_WALLET_ADDRESS} на указанный выше адрес TON кошелька.
-
 ⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON."""
-
+        
     def _get_env_var(self, var_name: str, default_value: str = None) -> str:
         """Безопасное получение переменной окружения"""
         import os
@@ -157,7 +118,7 @@ class SafeConfig:
         if not value:
             logger.warning(f"Переменная {var_name} не установлена, использую значение по умолчанию")
         return value
-
+    
     def get_admin_usernames(self):
         """Получение списка админов по username"""
         return ["pro.player.egor", "admin"]
@@ -219,7 +180,6 @@ class PassiveNFTBot:
         """Обработчик команды /start с ОРИГИНАЛЬНЫМИ кнопками"""
         # ОРИГИНАЛЬНОЕ ПРИВЕТСТВЕННОЕ СООБЩЕНИЕ
         welcome_text = self.config.WELCOME_MESSAGE
-        
         # ОРИГИНАЛЬНЫЕ КНОПКИ: Подписки, Связь, Реферальная система
         keyboard = [
             [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
@@ -227,7 +187,6 @@ class PassiveNFTBot:
             [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
         await update.message.reply_text(welcome_text, reply_markup=reply_markup)
 
     async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,51 +210,76 @@ class PassiveNFTBot:
                 await query.answer("Ошибка при открытии подписок.")
 
     async def subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик выбора конкретной подписки с ОРИГИНАЛЬНЫМ описанием"""
+        """Обработчик выбора плана подписки"""
         query = update.callback_query
         await query.answer()
         
         plan_index = int(query.data.split('_')[1])
         plan = self.config.SUBSCRIPTION_PLANS[plan_index]
         
-        # ОРИГИНАЛЬНОЕ описание подписки
-        plan_text = plan['description']
+        price = plan['price']
+        wallet_address = self.config.TON_WALLET_ADDRESS
         
-        # ОРИГИНАЛЬНЫЕ кнопки: "Оплатить" и "Назад"
-        keyboard = [
-            [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"payment_{plan_index}")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.message.edit_text(plan_text, reply_markup=reply_markup)
-
-    async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик кнопки 'Оплатить' с ОРИГИНАЛЬНОЙ инструкцией"""
-    query = update.callback_query
-    await query.answer()
-    
-    plan_index = int(query.data.split('_')[1])
-    plan = self.config.SUBSCRIPTION_PLANS[plan_index]
-    price = plan['price']
-    wallet_address = self.config.TON_WALLET_ADDRESS
-    
-    # ОРИГИНАЛЬНАЯ инструкция по оплате
-    payment_text = f"""💰 ОПЛАТА: {price} TON
+        payment_text = f"""💰 ОПЛАТА: {price} TON
 
 Адрес кошелька: <a href="ton://transfer/{wallet_address}?amount=0">{wallet_address}</a>
 
 ⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
 
 После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
-    
-    await query.message.edit_text(payment_text, parse_mode='HTML')
-    except BadRequest as e:
-        if "Message is not modified" in str(e):
-            await query.answer("Информация об оплате уже отображена!")
-        else:
-            await query.answer("Ошибка при отображении информации.")
         
+        keyboard = [
+            [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"payment_{plan_index}")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        try:
+            await query.message.edit_text(payment_text, parse_mode='HTML', reply_markup=reply_markup)
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                await query.answer("Сообщение уже открыто!")
+            else:
+                await query.answer("Ошибка при отображении плана.")
+
+    async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик кнопки 'Оплатить' с ОРИГИНАЛЬНОЙ инструкцией"""
+        query = update.callback_query
+        await query.answer()
+        
+        plan_index = int(query.data.split('_')[1])
+        plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+        price = plan['price']
+        wallet_address = self.config.TON_WALLET_ADDRESS
+        
+        # ОРИГИНАЛЬНАЯ инструкция по оплате
+        payment_text = f"""💰 ОПЛАТА: {price} TON
+
+Адрес кошелька: <a href="ton://transfer/{wallet_address}?amount=0">{wallet_address}</a>
+
+⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
+
+После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
+        
+        try:
+            await query.message.edit_text(payment_text, parse_mode='HTML')
+        except BadRequest as e:
+            if "Message is not modified" in str(e):
+                await query.answer("Информация об оплате уже отображена!")
+            else:
+                await query.answer("Ошибка при отображении информации.")
+
+    async def contact_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик кнопки 'Связь' с ОРИГИНАЛЬНЫМ текстом и кнопкой"""
+        query = update.callback_query
+        await query.answer()
+        # ОРИГИНАЛЬНЫЙ текст связи
+        contact_text = self.config.CONTACT_MESSAGE
+        # ОРИГИНАЛЬНАЯ кнопка: "Назад"
+        keyboard = [
+            [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             await query.message.edit_text(contact_text, reply_markup=reply_markup, parse_mode='Markdown')
         except BadRequest as e:
@@ -308,10 +292,8 @@ class PassiveNFTBot:
         """Обработчик кнопки 'Реферальная система' с ОРИГИНАЛЬНЫМИ кнопками"""
         query = update.callback_query
         await query.answer()
-        
         # ОРИГИНАЛЬНЫЙ текст реферальной системы
         referral_text = self.config.REFERRAL_MESSAGE
-        
         # ОРИГИНАЛЬНЫЕ кнопки: "Назад", "Получить реферальную ссылку", "Статистика рефералов"
         keyboard = [
             [InlineKeyboardButton("🔙 Назад", callback_data="back")],
@@ -319,7 +301,6 @@ class PassiveNFTBot:
             [InlineKeyboardButton("📊 Статистика рефералов", callback_data="referral_stats")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
         try:
             await query.message.edit_text(referral_text, reply_markup=reply_markup, parse_mode='Markdown')
         except BadRequest as e:
@@ -332,63 +313,43 @@ class PassiveNFTBot:
         """Обработчик получения реферальной ссылки"""
         query = update.callback_query
         await query.answer()
-        
         user = query.from_user
-        
         # Генерация персональной реферальной ссылки
         referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-        
         referral_link_text = f"Ваша персональная реферальная ссылка:\n\n{referral_link}"
-        
         # Кнопка "Назад"
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
         await query.message.edit_text(referral_link_text, reply_markup=reply_markup)
 
     async def referral_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик статистики рефералов"""
         query = update.callback_query
         await query.answer()
-        
         # Получение статистики пользователя
         stats = self.get_user_referral_stats(query.from_user.id)
-        
         if stats:
             stats_text = self.config.REFERRAL_STATS_MESSAGE.format(referrals_info=stats)
         else:
             stats_text = "У вас пока нет рефералов."
-        
         # Кнопка "Назад"
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
         await query.message.edit_text(stats_text, reply_markup=reply_markup)
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Назад' - возврат к главному меню"""
         query = update.callback_query
         await query.answer()
-        
         # Возврат к ОРИГИНАЛЬНОМУ приветственному сообщению
         welcome_text = self.config.WELCOME_MESSAGE
-        
         # ОРИГИНАЛЬНЫЕ кнопки главного меню
-        keyboard = [
-            [InlineKeyboardButton("Подписки", callback_data="subscription")],
-            [InlineKeyboardButton("Связь", callback_data="contact")],
-            [InlineKeyboardButton("Реферальная система", callback_data="referral")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # ОРИГИНАЛЬНЫЕ кнопки главного меню с ЭМОДЗИ
         keyboard = [
             [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
             [InlineKeyboardButton("💬 Связь", callback_data="contact")],
             [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
         try:
             await query.message.edit_text(welcome_text, reply_markup=reply_markup)
         except BadRequest as e:
@@ -397,9 +358,9 @@ class PassiveNFTBot:
             # Сообщение не изменилось, просто отвечаем на callback
             await query.answer()
 
-        async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-            """Обработчик команды /help"""
-            help_text = """🤖 PassiveNFT Bot - Справка
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /help"""
+        help_text = """🤖 PassiveNFT Bot - Справка
 /start - Начать работу с ботом
 /help - Показать эту справку
 /adminserveraa - Админ панель (только для админов)
@@ -409,21 +370,16 @@ class PassiveNFTBot:
     async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraa"""
         user = update.effective_user
-
         # Проверяем, является ли пользователь админом
         if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
             await update.message.reply_text("❌ У вас нет доступа к админ панели")
             return
-
         # ОРИГИНАЛЬНЫЙ текст админ панели
         admin_text = """🔧 Админ панель PassiveNFT Bot
-
 📊 /adminserveraastat - статистика подписок
 👥 /adminserveraapeople - список участников
 🔗 /adminserveraaref - реферальная статистика
-
 💳 Количество подписок:
-
 👥 на 150 человек: энное количество из 150
 👥 на 100 человек: энное количество из 100
 👥 на 50 человек: энное количество из 50"""
@@ -464,14 +420,11 @@ class PassiveNFTBot:
         logger.info("🚀 Запуск PassiveNFT Bot на Render...")
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
         logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
-
         # Очистка webhook перед запуском
         await self.clear_webhook_on_startup()
-
         # Инициализация и запуск приложения
         await self.application.initialize()
         await self.application.start()
-
         try:
             # Запуск polling
             await self.application.updater.start_polling()
