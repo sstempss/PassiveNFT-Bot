@@ -264,7 +264,7 @@ class PassiveNFTBot:
         query = update.callback_query
         await query.answer()
         
-        plan_index = int(query.data.split('_')[1])
+        plan_index = int(query.data.split('_')[2])
         plan = self.config.SUBSCRIPTION_PLANS[plan_index]
         
         # ОРИГИНАЛЬНОЕ описание подписки
