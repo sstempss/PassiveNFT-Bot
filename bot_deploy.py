@@ -252,7 +252,7 @@ class PassiveNFTBot:
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
-            await query.message.edit_text(subscription_text, reply_markup=reply_markup)
+            await query.message.edit_text(payment_text, reply_markup=reply_markup)
         except BadRequest as e:
             if "Message is not modified" in str(e):
                 await query.answer("Подписки уже открыты!")
