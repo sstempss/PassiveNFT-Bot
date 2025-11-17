@@ -8,7 +8,6 @@ import logging
 import sqlite3
 import sys
 import traceback
-import os  # ДОБАВЛЕНО: импорт os для работы с переменными окружения
 from pathlib import Path
 # Импорты Telegram бота - ГЛОБАЛЬНЫЕ ИМПОРТЫ
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -80,7 +79,7 @@ class SafeConfig:
 📊 Процент победы одного участника составляет 0,67% на одно NFT, количество разыгрываемых NFT в день – 5, следственно 5*0,67% = 3,35% на победу за день, в месяц получается 100,5%
 🎁 На гифты за звезды процент победы на одного участника составляет 0,67%, количество разыгрываемых гифтов в день – 4, следственно 4*0,67% = 2,68% на победу за день, в месяц получается 80,4%
 💰 ~ окуп от х1 до х5""",
-                "price_ton": 150
+                "price_ton": 4
             },
             {
                 "name": "на 100 человек",
@@ -90,7 +89,7 @@ class SafeConfig:
 🎁 На гифты за звезды процент победы на одного участника составляет 0,67%, количество разыгрываемых гифтов в день – 4, следственно 4*1% = 4% на победу за день, в месяц получается 120%
 💵 Один человек минимально получает возврат средств в 50% от стоимости подписки в месяц (в размере 1 NFT+гифт за 50 зв.)
 💰 ~ окуп от х1 до х8""",
-                "price_ton": 100
+                "price_ton": 7
             },
             {
                 "name": "на 50 человек",
@@ -100,7 +99,7 @@ class SafeConfig:
 🎁 На гифты за звезды процент победы на одного участника составляет 2%, количество разыгрываемых гифтов в день – 4, следственно 4*2% = 8% на победу за день, в месяц получается 240%
 💰 На одного участника в ТГК получается возврат средств в 70% от стоимости подписки в месяц (в размере 4 NFT+ 2 гифта за 50 зв.)
 💰 ~ окуп от х1 до х2,5-3""",
-                "price_ton": 50
+                "price_ton": 13
             }
         ]
 
@@ -177,10 +176,7 @@ class PassiveNFTBot:
             self.application.add_handler(CommandHandler("start", self.start_command))
             self.application.add_handler(CommandHandler("help", self.help_command))
             self.application.add_handler(CommandHandler("adminserveraa", self.admin_command))
-            self.application.add_handler(CommandHandler("adminserveraastat", self.admin_stats_command))
-            self.application.add_handler(CommandHandler("adminserveraapeople", self.admin_people_command))
-            self.application.add_handler(CommandHandler("adminserveraaref", self.admin_ref_command))
-            self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription$"))
+            self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription_"))
             self.application.add_handler(CallbackQueryHandler(self.subscription_plan_callback, pattern="^plan_"))
             self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
             self.application.add_handler(CallbackQueryHandler(self.contact_callback, pattern="^contact$"))
@@ -225,11 +221,11 @@ class PassiveNFTBot:
         await query.answer()
         
         # ОРИГИНАЛЬНОЕ общее описание подписок
-        subscription_text = self.config.SUBSCRIPTION_DESCRIPTION
+        subscription_text = self.SUBSCRIPTION_DESCRIPTION
         
         # ОРИГИНАЛЬНЫЕ кнопки подписок
         keyboard = []
-        for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
+        for i, plan in enumerate(self.SUBSCRIPTION_PLANS):
             button_text = plan['name']
             callback_data = f"plan_{i}"
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
@@ -267,24 +263,27 @@ class PassiveNFTBot:
         await query.message.edit_text(plan_text, reply_markup=reply_markup)
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Оплатить' с ОРИГИНАЛЬНОЙ инструкцией"""
+        """Обработчик кнопки 'Оплатить' с обновленной инструкцией"""
         query = update.callback_query
         await query.answer()
         
         plan_index = int(query.data.split('_')[1])
         plan = self.config.SUBSCRIPTION_PLANS[plan_index]
         
-        # ОРИГИНАЛЬНАЯ инструкция по оплате
-        payment_text = f"""{plan['description']}
+        # Обновленная инструкция по оплате
+        payment_text = f"""💰 ОПЛАТА: {plan['price_ton']} TON
 
-💰 ОПЛАТА: {plan['price_ton']} TON
 Адрес кошелька: {self.config.TON_WALLET_ADDRESS}
 
-{self.config.PAYMENT_INSTRUCTIONS}
+⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
 
 После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
         
-        await query.message.edit_text(payment_text)
+        # Кнопка "Назад"
+        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.message.edit_text(payment_text, reply_markup=reply_markup)
 
     async def contact_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Связь' с ОРИГИНАЛЬНЫМ текстом"""
@@ -375,6 +374,14 @@ class PassiveNFTBot:
         # Возврат к ОРИГИНАЛЬНОМУ приветственному сообщению
         welcome_text = self.config.WELCOME_MESSAGE
         
+        # ОРИГИНАЛЬНЫЕ кнопки главного меню
+        keyboard = [
+            [InlineKeyboardButton("Подписки", callback_data="subscription")],
+            [InlineKeyboardButton("Связь", callback_data="contact")],
+            [InlineKeyboardButton("Реферальная система", callback_data="referral")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         # ОРИГИНАЛЬНЫЕ кнопки главного меню с ЭМОДЗИ
         keyboard = [
             [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
@@ -425,75 +432,6 @@ class PassiveNFTBot:
 👥 на 50 человек: энное количество из 50"""
         await update.message.reply_text(admin_text, parse_mode='Markdown')
 
-    async def admin_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /adminserveraastat"""
-        user = update.effective_user
-
-        # Проверяем, является ли пользователь админом
-        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
-            return
-
-        # Получаем статистику подписок
-        stats = self.get_subscription_stats()
-        
-        stats_text = f"""📊 Статистика подписок PassiveNFT Bot
-
-💳 Общее количество подписок: {stats['total']}
-
-👥 Подписки по типам:
-• На 150 человек: {stats.get('150_people', 0)}
-• На 100 человек: {stats.get('100_people', 0)}
-• На 50 человек: {stats.get('50_people', 0)}
-
-🎯 Общий доход от подписок: {stats.get('total_revenue', 0)} TON"""
-        
-        await update.message.reply_text(stats_text, parse_mode='Markdown')
-
-    async def admin_people_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /adminserveraapeople"""
-        user = update.effective_user
-
-        # Проверяем, является ли пользователь админом
-        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
-            return
-
-        # Получаем список участников
-        people = self.get_all_users()
-        
-        if people:
-            people_text = "👥 Список участников PassiveNFT Bot:\n"
-            for i, person in enumerate(people, 1):
-                people_text += f"{i}. ID: {person[0]}, Подписка: {person[1]}\n"
-            people_text += f"\n📊 Всего участников: {len(people)}"
-        else:
-            people_text = "👥 Пока нет участников"
-        
-        await update.message.reply_text(people_text, parse_mode='Markdown')
-
-    async def admin_ref_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /adminserveraaref"""
-        user = update.effective_user
-
-        # Проверяем, является ли пользователь админом
-        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
-            return
-
-        # Получаем реферальную статистику
-        ref_stats = self.get_referral_statistics()
-        
-        ref_text = f"""🔗 Реферальная статистика PassiveNFT Bot
-
-👥 Общее количество рефералов: {ref_stats['total_referrals']}
-💰 Общий заработок с рефералов: {ref_stats['total_earnings']} TON
-
-🔝 Топ-10 рефералов:
-{ref_stats['top_referrers']}"""
-        
-        await update.message.reply_text(ref_text, parse_mode='Markdown')
-
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений"""
         message = update.message.text.lower()
@@ -523,71 +461,6 @@ class PassiveNFTBot:
         except Exception as e:
             logger.error(f"Ошибка получения статистики рефералов: {e}")
             return None
-
-    def get_subscription_stats(self):
-        """Получение статистики подписок"""
-        try:
-            with sqlite3.connect(self.database.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE active = 1")
-                total = cursor.fetchone()[0]
-                
-                stats = {'total': total, 'total_revenue': 0}
-                
-                # Получаем статистику по типам подписок
-                for plan_index, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
-                    plan_type = "на 150 человек" if plan_index == 0 else "на 100 человек" if plan_index == 1 else "на 50 человек"
-                    cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE subscription_type = ? AND active = 1", (plan_type,))
-                    count = cursor.fetchone()[0]
-                    key = "150_people" if plan_index == 0 else "100_people" if plan_index == 1 else "50_people"
-                    stats[key] = count
-                    stats['total_revenue'] += count * plan['price_ton']
-                
-                return stats
-        except Exception as e:
-            logger.error(f"Ошибка получения статистики подписок: {e}")
-            return {'total': 0, '150_people': 0, '100_people': 0, '50_people': 0, 'total_revenue': 0}
-
-    def get_all_users(self):
-        """Получение списка всех пользователей"""
-        try:
-            with sqlite3.connect(self.database.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT user_id, subscription_type FROM subscriptions WHERE active = 1 ORDER BY user_id")
-                return cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Ошибка получения списка пользователей: {e}")
-            return []
-
-    def get_referral_statistics(self):
-        """Получение общей реферальной статистики"""
-        try:
-            with sqlite3.connect(self.database.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM referrals")
-                total_referrals = cursor.fetchone()[0]
-                
-                cursor.execute("SELECT SUM(total_earnings) FROM referrals")
-                total_earnings = cursor.fetchone()[0] or 0
-                
-                cursor.execute("SELECT referrer_id, referral_code, total_referrals FROM referrals ORDER BY total_referrals DESC LIMIT 10")
-                top_referrers = cursor.fetchall()
-                
-                top_text = ""
-                if top_referrers:
-                    for i, (user_id, code, count) in enumerate(top_referrers, 1):
-                        top_text += f"{i}. ID: {user_id} - {count} рефералов\n"
-                else:
-                    top_text = "Нет активных рефералов"
-                
-                return {
-                    'total_referrals': total_referrals,
-                    'total_earnings': total_earnings,
-                    'top_referrers': top_text
-                }
-        except Exception as e:
-            logger.error(f"Ошибка получения реферальной статистики: {e}")
-            return {'total_referrals': 0, 'total_earnings': 0, 'top_referrers': 'Нет данных'}
 
     async def run(self):
         """Запуск бота с исправленным методом"""
@@ -626,9 +499,6 @@ async def main():
     """Главная функция запуска"""
     try:
         bot = PassiveNFTBot()
-        port = int(os.getenv('PORT', 8080))  # ДОБАВЛЕНО: обработка переменной окружения PORT
-        logger.info(f"🌐 Сервис работает на порту: {port}")  # ДОБАВЛЕНО: логирование порта
-        
         await bot.run()
     except KeyboardInterrupt:
         logger.info("👋 Получен сигнал остановки")
