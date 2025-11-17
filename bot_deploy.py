@@ -244,7 +244,7 @@ class PassiveNFTBot:
         keyboard = []
         for i, plan in enumerate(self.SUBSCRIPTION_PLANS):
             button_text = plan['name']
-            callback_data: f.subscription_plan_{i}
+            callback_data: subscription_plan_{i}
             keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
         
         # Кнопка "Назад"
