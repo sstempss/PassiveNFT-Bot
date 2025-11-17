@@ -296,7 +296,7 @@ class PassiveNFTBot:
 После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
         
         # Кнопка "Назад"
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]]
+        keyboard = [InlineKeyboardButton("🔙 Назад", callback_data="back_to_subscription")]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.message.edit_text(payment_text, reply_markup=reply_markup)(keyboard)
