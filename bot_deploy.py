@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PassiveNFT Bot - ВЕРСИЯ БЕЗ ЖИРНОГО ТЕКСТА (для устранения ошибок парсинга)
+PassiveNFT Bot - ВЕРСИЯ С УЛУЧШЕННЫМ ЛОГИРОВАНИЕМ (для диагностики проблем)
 """
 import asyncio
 import logging
@@ -198,7 +198,7 @@ except Exception as e:
 
 
 class PassiveNFTBot:
-    """Главный класс бота без жирного текста"""
+    """Главный класс бота с улучшенным логированием"""
     def __init__(self):
         self.config = config
         self.database = Database()
@@ -251,55 +251,70 @@ class PassiveNFTBot:
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start с обработкой реферальных параметров"""
-        user = update.effective_user
-        args = context.args
-        
-        # Проверяем, есть ли реферальный параметр
-        referrer_id = None
-        if args and len(args) > 0:
-            arg = args[0]
-            if arg.startswith('ref_'):
-                try:
-                    referrer_id = int(arg[4:])  # Убираем "ref_" и получаем ID
-                    if referrer_id != user.id:  # Нельзя быть реферером самому себе
-                        # Сохраняем информацию о рефере временно
-                        self.save_pending_referral(user.id, referrer_id)
-                        logger.info(f"Пользователь {user.id} пришел от реферера {referrer_id}")
-                except ValueError:
-                    pass  # Неверный формат, игнорируем
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /start от пользователя {update.effective_user.id}")
+        try:
+            user = update.effective_user
+            args = context.args
+            
+            # Проверяем, есть ли реферальный параметр
+            referrer_id = None
+            if args and len(args) > 0:
+                arg = args[0]
+                if arg.startswith('ref_'):
+                    try:
+                        referrer_id = int(arg[4:])  # Убираем "ref_" и получаем ID
+                        if referrer_id != user.id:  # Нельзя быть реферером самому себе
+                            # Сохраняем информацию о рефере временно
+                            self.save_pending_referral(user.id, referrer_id)
+                            logger.info(f"Пользователь {user.id} пришел от реферера {referrer_id}")
+                    except ValueError:
+                        pass  # Неверный формат, игнорируем
 
-        # Выбираем соответствующее приветственное сообщение
-        if referrer_id:
-            welcome_text = self.config.REFERRAL_WELCOME_MESSAGE
-        else:
-            welcome_text = self.config.WELCOME_MESSAGE
+            # Выбираем соответствующее приветственное сообщение
+            if referrer_id:
+                welcome_text = self.config.REFERRAL_WELCOME_MESSAGE
+            else:
+                welcome_text = self.config.WELCOME_MESSAGE
 
-        # ОРИГИНАЛЬНЫЕ КНОПКИ: Подписки, Связь, Реферальная система
-        keyboard = [
-            [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
-            [InlineKeyboardButton("💬 Связь", callback_data="contact")],
-            [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+            # ОРИГИНАЛЬНЫЕ КНОПКИ: Подписки, Связь, Реферальная система
+            keyboard = [
+                [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
+                [InlineKeyboardButton("💬 Связь", callback_data="contact")],
+                [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+            logger.info(f"✅ /start выполнен успешно для пользователя {user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в start_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def confirm_payment_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды подтверждения оплаты и добавления реферала"""
-        user = update.effective_user
-        
-        # Проверяем, есть ли для этого пользователя ожидающий реферер
-        pending_referrer = self.get_pending_referrer(user.id)
-        if pending_referrer:
-            # Добавляем реферала в базу
-            success = self.add_referral(pending_referrer, user.id)
-            if success:
-                # Удаляем запись об ожидающем реферере
-                self.remove_pending_referral(user.id)
-                await update.message.reply_text("✅ Оплата подтверждена! Реферал успешно добавлен.")
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /confirm_payment от пользователя {update.effective_user.id}")
+        try:
+            user = update.effective_user
+            
+            # Проверяем, есть ли для этого пользователя ожидающий реферер
+            pending_referrer = self.get_pending_referrer(user.id)
+            if pending_referrer:
+                # Добавляем реферала в базу
+                success = self.add_referral(pending_referrer, user.id)
+                if success:
+                    # Удаляем запись об ожидающем реферере
+                    self.remove_pending_referral(user.id)
+                    await update.message.reply_text("✅ Оплата подтверждена! Реферал успешно добавлен.")
+                else:
+                    await update.message.reply_text("❌ Ошибка при добавлении реферала.")
             else:
-                await update.message.reply_text("❌ Ошибка при добавлении реферала.")
-        else:
-            await update.message.reply_text("ℹ️ Для вас нет ожидающих рефереров.")
+                await update.message.reply_text("ℹ️ Для вас нет ожидающих рефереров.")
+            
+            logger.info(f"✅ /confirm_payment выполнен для пользователя {user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirm_payment_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     def save_pending_referral(self, user_id: int, referrer_id: int):
         """Сохранение информации о временном рефере"""
@@ -381,60 +396,78 @@ class PassiveNFTBot:
 
     async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Подписки' - БЕЗ ЖИРНОГО ТЕКСТА"""
-        query = update.callback_query
-        await query.answer()
-
-        # ОРИГИНАЛЬНОЕ общее описание подписок
-        subscription_text = self.config.SUBSCRIPTION_DESCRIPTION
-
-        # ОРИГИНАЛЬНЫЕ кнопки подписок
-        keyboard = []
-        for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
-            button_text = plan['name']
-            callback_data = f"subscription_plan_{i}"
-            keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-
-        # Кнопка "Назад"
-        keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
-
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: subscription callback от пользователя {update.effective_user.id}")
         try:
-            await query.message.edit_text(subscription_text, reply_markup=reply_markup)
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                await query.answer("Подписки уже открыты!")
-            else:
-                await query.answer("Ошибка при открытии подписок.")
+            query = update.callback_query
+            await query.answer()
+
+            # ОРИГИНАЛЬНОЕ общее описание подписок
+            subscription_text = self.config.SUBSCRIPTION_DESCRIPTION
+
+            # ОРИГИНАЛЬНЫЕ кнопки подписок
+            keyboard = []
+            for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
+                button_text = plan['name']
+                callback_data = f"subscription_plan_{i}"
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+            # Кнопка "Назад"
+            keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            try:
+                await query.message.edit_text(subscription_text, reply_markup=reply_markup)
+                logger.info(f"✅ Подписки открыты для пользователя {update.effective_user.id}")
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    await query.answer("Подписки уже открыты!")
+                    logger.info(f"ℹ️ Подписки уже открыты для пользователя {update.effective_user.id}")
+                else:
+                    await query.answer("Ошибка при открытии подписок.")
+                    logger.error(f"❌ Ошибка BadRequest в subscription_callback: {e}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в subscription_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора конкретной подписки с ОРИГИНАЛЬНЫМ описанием"""
-        query = update.callback_query
-        await query.answer()
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: subscription_plan callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
 
-        plan_index = int(query.data.split('_')[2])
-        plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+            plan_index = int(query.data.split('_')[2])
+            plan = self.config.SUBSCRIPTION_PLANS[plan_index]
 
-        # ОРИГИНАЛЬНОЕ описание подписки
-        plan_text = plan['description']
+            # ОРИГИНАЛЬНОЕ описание подписки
+            plan_text = plan['description']
 
-        # ОРИГИНАЛЬНЫЕ кнопки: "Оплатить" и "Назад"
-        keyboard = [
-            [InlineKeyboardButton("💳 Оплатить", callback_data=f"payment_{plan_index}")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(plan_text, reply_markup=reply_markup)
+            # ОРИГИНАЛЬНЫЕ кнопки: "Оплатить" и "Назад"
+            keyboard = [
+                [InlineKeyboardButton("💳 Оплатить", callback_data=f"payment_{plan_index}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(plan_text, reply_markup=reply_markup)
+            logger.info(f"✅ План {plan_index} открыт для пользователя {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в subscription_plan_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Оплатить' - БЕЗ ЖИРНОГО ТЕКСТА"""
-        query = update.callback_query
-        await query.answer()
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: payment callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
 
-        plan_index = int(query.data.split('_')[1])
-        plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+            plan_index = int(query.data.split('_')[1])
+            plan = self.config.SUBSCRIPTION_PLANS[plan_index]
 
-        # БЕЗ ЖИРНОГО ТЕКСТА - чистый текст
-        payment_text = f"""💰 ОПЛАТА: {plan['price_ton']} TON
+            # БЕЗ ЖИРНОГО ТЕКСТА - чистый текст
+            payment_text = f"""💰 ОПЛАТА: {plan['price_ton']} TON
 
 Адрес кошелька:
 <code>{self.config.TON_WALLET_ADDRESS}</code>
@@ -443,99 +476,138 @@ class PassiveNFTBot:
 
 После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
 
-        # Кнопки: "Копировать TON адрес" и "Назад"
-        keyboard = [
-            [InlineKeyboardButton("📋 Копировать TON адрес", callback_data=f"copy_ton_{plan_index}")],
-            [InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
+            # Кнопки: "Копировать TON адрес" и "Назад"
+            keyboard = [
+                [InlineKeyboardButton("📋 Копировать TON адрес", callback_data=f"copy_ton_{plan_index}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
+            logger.info(f"✅ Оплата для плана {plan_index} открыта для пользователя {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в payment_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def contact_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Связь' с ОРИГИНАЛЬНЫМ текстом"""
-        query = update.callback_query
-        await query.answer()
-
-        # ОРИГИНАЛЬНЫЙ текст связи с ссылкой
-        contact_text = self.config.CONTACT_MESSAGE
-
-        # Кнопка "Назад"
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: contact callback от пользователя {update.effective_user.id}")
         try:
-            await query.message.edit_text(contact_text, reply_markup=reply_markup, parse_mode='HTML')
-        except BadRequest as e:
-            if "Message is not modified" in str(e):
-                await query.answer("Контакты уже открыты!")
-            else:
-                await query.answer("Ошибка при открытии контактов.")
+            query = update.callback_query
+            await query.answer()
+
+            # ОРИГИНАЛЬНЫЙ текст связи с ссылкой
+            contact_text = self.config.CONTACT_MESSAGE
+
+            # Кнопка "Назад"
+            keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            try:
+                await query.message.edit_text(contact_text, reply_markup=reply_markup, parse_mode='HTML')
+                logger.info(f"✅ Контакты открыты для пользователя {update.effective_user.id}")
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    await query.answer("Контакты уже открыты!")
+                    logger.info(f"ℹ️ Контакты уже открыты для пользователя {update.effective_user.id}")
+                else:
+                    await query.answer("Ошибка при открытии контактов.")
+                    logger.error(f"❌ Ошибка BadRequest в contact_callback: {e}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в contact_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def referral_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Реферальная система' с ОРИГИНАЛЬНЫМИ кнопками"""
-        query = update.callback_query
-        await query.answer()
-
-        # ОРИГИНАЛЬНЫЙ текст реферальной системы
-        referral_text = self.config.REFERRAL_MESSAGE
-
-        # ОРИГИНАЛЬНЫЕ кнопки: "Назад", "Получить реферальную ссылку", "Статистика рефералов"
-        keyboard = [
-            [InlineKeyboardButton("🔙 Назад", callback_data="back")],
-            [InlineKeyboardButton("🔗 Получить реферальную ссылку", callback_data="get_referral")],
-            [InlineKeyboardButton("📊 Статистика рефералов", callback_data="referral_stats")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: referral callback от пользователя {update.effective_user.id}")
         try:
-            await query.message.edit_text(referral_text, reply_markup=reply_markup, parse_mode='HTML')
-        except BadRequest as e:
-            if "Message is not modified" not in str(e):
-                raise
-            # Сообщение не изменилось, просто отвечаем на callback
+            query = update.callback_query
             await query.answer()
+
+            # ОРИГИНАЛЬНЫЙ текст реферальной системы
+            referral_text = self.config.REFERRAL_MESSAGE
+
+            # ОРИГИНАЛЬНЫЕ кнопки: "Назад", "Получить реферальную ссылку", "Статистика рефералов"
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад", callback_data="back")],
+                [InlineKeyboardButton("🔗 Получить реферальную ссылку", callback_data="get_referral")],
+                [InlineKeyboardButton("📊 Статистика рефералов", callback_data="referral_stats")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            try:
+                await query.message.edit_text(referral_text, reply_markup=reply_markup, parse_mode='HTML')
+                logger.info(f"✅ Реферальная система открыта для пользователя {update.effective_user.id}")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    logger.error(f"❌ Ошибка BadRequest в referral_callback: {e}")
+                    raise
+                # Сообщение не изменилось, просто отвечаем на callback
+                await query.answer()
+                logger.info(f"ℹ️ Реферальная система уже открыта для пользователя {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в referral_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def get_referral_link_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик получения реферальной ссылки - БЕЗ ЖИРНОГО ТЕКСТА"""
-        query = update.callback_query
-        await query.answer()
-        user = query.from_user
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: get_referral callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+            user = query.from_user
 
-        # Генерация персональной реферальной ссылки
-        referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-        referral_link_text = f"{self.config.REFERRAL_LINK_MESSAGE}\n\n{referral_link}"
+            # Генерация персональной реферальной ссылки
+            referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
+            referral_link_text = f"{self.config.REFERRAL_LINK_MESSAGE}\n\n{referral_link}"
 
-        # Кнопка "Назад"
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(referral_link_text, reply_markup=reply_markup)
+            # Кнопка "Назад"
+            keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(referral_link_text, reply_markup=reply_markup)
+            logger.info(f"✅ Реферальная ссылка отправлена пользователю {user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в get_referral_link_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def referral_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик статистики рефералов"""
-        query = update.callback_query
-        await query.answer()
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: referral_stats callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
 
-        # Получение статистики пользователя
-        stats = self.get_user_referral_stats(query.from_user.id)
-        if stats:
-            stats_text = self.config.REFERRAL_STATS_MESSAGE.format(referrals_info=stats)
-        else:
-            stats_text = "У вас пока нет рефералов."
+            # Получение статистики пользователя
+            stats = self.get_user_referral_stats(query.from_user.id)
+            if stats:
+                stats_text = self.config.REFERRAL_STATS_MESSAGE.format(referrals_info=stats)
+            else:
+                stats_text = "У вас пока нет рефералов."
 
-        # Кнопка "Назад"
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(stats_text, reply_markup=reply_markup)
+            # Кнопка "Назад"
+            keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(stats_text, reply_markup=reply_markup)
+            logger.info(f"✅ Статистика рефералов отправлена пользователю {query.from_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в referral_stats_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def copy_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик копирования TON адреса"""
-        query = update.callback_query
-        await query.answer()
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: copy_ton callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
 
-        # Извлекаем plan_index из callback_data
-        plan_index = int(query.data.split('_')[2])
-        plan = self.config.SUBSCRIPTION_PLANS[plan_index]
-        
-        # Показываем сообщение с инструкцией по копированию
-        copy_instruction = f"""📋 Копируйте TON адрес для оплаты подписки {plan['name']}:
+            # Извлекаем plan_index из callback_data
+            plan_index = int(query.data.split('_')[2])
+            plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+            
+            # Показываем сообщение с инструкцией по копированию
+            copy_instruction = f"""📋 Копируйте TON адрес для оплаты подписки {plan['name']}:
 
 <code>{self.config.TON_WALLET_ADDRESS}</code>
 
@@ -545,55 +617,79 @@ class PassiveNFTBot:
 
 После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME}"""
 
-        # Кнопка "Назад к плану"
-        keyboard = [[InlineKeyboardButton("🔙 Назад к плану", callback_data=f"payment_{plan_index}")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(copy_instruction, reply_markup=reply_markup, parse_mode='HTML')
+            # Кнопка "Назад к плану"
+            keyboard = [[InlineKeyboardButton("🔙 Назад к плану", callback_data=f"payment_{plan_index}")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(copy_instruction, reply_markup=reply_markup, parse_mode='HTML')
+            logger.info(f"✅ Инструкция по копированию TON отправлена для плана {plan_index}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в copy_ton_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Назад' - возврат к главному меню"""
-        query = update.callback_query
-        await query.answer()
-
-        # Возврат к ОРИГИНАЛЬНОМУ приветственному сообщению
-        welcome_text = self.config.WELCOME_MESSAGE
-
-        # ОРИГИНАЛЬНЫЕ кнопки главного меню
-        keyboard = [
-            [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
-            [InlineKeyboardButton("💬 Связь", callback_data="contact")],
-            [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: back callback от пользователя {update.effective_user.id}")
         try:
-            await query.message.edit_text(welcome_text, reply_markup=reply_markup)
-        except BadRequest as e:
-            if "Message is not modified" not in str(e):
-                raise
-            # Сообщение не изменилось, просто отвечаем на callback
+            query = update.callback_query
             await query.answer()
+
+            # Возврат к ОРИГИНАЛЬНОМУ приветственному сообщению
+            welcome_text = self.config.WELCOME_MESSAGE
+
+            # ОРИГИНАЛЬНЫЕ кнопки главного меню
+            keyboard = [
+                [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
+                [InlineKeyboardButton("💬 Связь", callback_data="contact")],
+                [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            try:
+                await query.message.edit_text(welcome_text, reply_markup=reply_markup)
+                logger.info(f"✅ Возврат к главному меню для пользователя {update.effective_user.id}")
+            except BadRequest as e:
+                if "Message is not modified" not in str(e):
+                    logger.error(f"❌ Ошибка BadRequest в back_callback: {e}")
+                    raise
+                # Сообщение не изменилось, просто отвечаем на callback
+                await query.answer()
+                logger.info(f"ℹ️ Уже в главном меню для пользователя {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в back_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /help"""
-        help_text = f"""🤖 PassiveNFT Bot - Справка
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /help от пользователя {update.effective_user.id}")
+        try:
+            help_text = f"""🤖 PassiveNFT Bot - Справка
 /start - Начать работу с ботом
 /help - Показать эту справку
 /confirm_payment - Подтвердить оплату и добавить реферала
 /adminserveraa - Админ панель (только для админов)
 💬 Для вопросов: @{self.config.MANAGER_USERNAME}"""
-        await update.message.reply_text(help_text)
+            await update.message.reply_text(help_text)
+            logger.info(f"✅ /help выполнен для пользователя {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в help_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraa"""
-        user = update.effective_user
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraa от пользователя {update.effective_user.id}")
+        try:
+            user = update.effective_user
 
-        # Проверяем, является ли пользователь админом
-        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
-            return
+            # Проверяем, является ли пользователь админом
+            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+                await update.message.reply_text("❌ У вас нет доступа к админ панели")
+                logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
+                return
 
-        # ОРИГИНАЛЬНЫЙ текст админ панели
-        admin_text = """🔧 Админ панель PassiveNFT Bot
+            # ОРИГИНАЛЬНЫЙ текст админ панели
+            admin_text = """🔧 Админ панель PassiveNFT Bot
 📊 /adminserveraastat - статистика подписок
 👥 /adminserveraapeople - список участников
 🔗 /adminserveraaref - реферальная статистика
@@ -602,70 +698,106 @@ class PassiveNFTBot:
 👥 на 150 человек: энное количество из 150
 👥 на 100 человек: энное количество из 100
 👥 на 50 человек: энное количество из 50"""
-        await update.message.reply_text(admin_text)
+            await update.message.reply_text(admin_text)
+            logger.info(f"✅ Админ панель открыта для пользователя {user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в admin_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def admin_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraastat"""
-        user = update.effective_user
-
-        # Проверяем, является ли пользователь админом
-        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
-            return
-
-        # Получаем статистику подписок
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraastat от пользователя {update.effective_user.id}")
         try:
-            stats_text = self.get_subscription_stats()
-            await update.message.reply_text(f"📊 Статистика подписок:\n\n{stats_text}")
+            user = update.effective_user
+
+            # Проверяем, является ли пользователь админом
+            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+                await update.message.reply_text("❌ У вас нет доступа к админ панели")
+                logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
+                return
+
+            # Получаем статистику подписок
+            try:
+                stats_text = self.get_subscription_stats()
+                await update.message.reply_text(f"📊 Статистика подписок:\n\n{stats_text}")
+                logger.info(f"✅ Статистика отправлена пользователю {user.id}")
+            except Exception as e:
+                logger.error(f"Ошибка получения статистики: {e}")
+                await update.message.reply_text("❌ Ошибка при получении статистики")
         except Exception as e:
-            logger.error(f"Ошибка получения статистики: {e}")
-            await update.message.reply_text("❌ Ошибка при получении статистики")
+            logger.error(f"❌ Ошибка в admin_stats_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def admin_people_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraapeople"""
-        user = update.effective_user
-
-        # Проверяем, является ли пользователь админом
-        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
-            return
-
-        # Получаем список участников
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraapeople от пользователя {update.effective_user.id}")
         try:
-            people_text = self.get_subscribed_people()
-            await update.message.reply_text(f"👥 Список участников:\n\n{people_text}")
+            user = update.effective_user
+
+            # Проверяем, является ли пользователь админом
+            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+                await update.message.reply_text("❌ У вас нет доступа к админ панели")
+                logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
+                return
+
+            # Получаем список участников
+            try:
+                people_text = self.get_subscribed_people()
+                await update.message.reply_text(f"👥 Список участников:\n\n{people_text}")
+                logger.info(f"✅ Список участников отправлен пользователю {user.id}")
+            except Exception as e:
+                logger.error(f"Ошибка получения списка людей: {e}")
+                await update.message.reply_text("❌ Ошибка при получении списка участников")
         except Exception as e:
-            logger.error(f"Ошибка получения списка людей: {e}")
-            await update.message.reply_text("❌ Ошибка при получении списка участников")
+            logger.error(f"❌ Ошибка в admin_people_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def admin_referrals_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraaref"""
-        user = update.effective_user
-
-        # Проверяем, является ли пользователь админом
-        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
-            return
-
-        # Получаем реферальную статистику
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraaref от пользователя {update.effective_user.id}")
         try:
-            referrals_text = self.get_referrals_stats()
-            await update.message.reply_text(f"🔗 Реферальная статистика:\n\n{referrals_text}")
+            user = update.effective_user
+
+            # Проверяем, является ли пользователь админом
+            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+                await update.message.reply_text("❌ У вас нет доступа к админ панели")
+                logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
+                return
+
+            # Получаем реферальную статистику
+            try:
+                referrals_text = self.get_referrals_stats()
+                await update.message.reply_text(f"🔗 Реферальная статистика:\n\n{referrals_text}")
+                logger.info(f"✅ Реферальная статистика отправлена пользователю {user.id}")
+            except Exception as e:
+                logger.error(f"Ошибка получения реферальной статистики: {e}")
+                await update.message.reply_text("❌ Ошибка при получении реферальной статистики")
         except Exception as e:
-            logger.error(f"Ошибка получения реферальной статистики: {e}")
-            await update.message.reply_text("❌ Ошибка при получении реферальной статистики")
+            logger.error(f"❌ Ошибка в admin_referrals_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений"""
-        message = update.message.text.lower()
-        if "help" in message or "помощь" in message:
-            await self.help_command(update, context)
-        elif "admin" in message and update.effective_user.id in self.config.ADMIN_USER_IDS:
-            await self.admin_command(update, context)
-        else:
-            await update.message.reply_text(
-                "🤖 Используйте /start для начала работы или /help для справки"
-            )
+        logger.info(f"🎯 ТЕКСТОВОЕ СООБЩЕНИЕ ПОЛУЧЕНО: '{update.message.text}' от пользователя {update.effective_user.id}")
+        try:
+            message = update.message.text.lower()
+            if "help" in message or "помощь" in message:
+                await self.help_command(update, context)
+            elif "admin" in message and update.effective_user.id in self.config.ADMIN_USER_IDS:
+                await self.admin_command(update, context)
+            else:
+                await update.message.reply_text(
+                    "🤖 Используйте /start для начала работы или /help для справки"
+                )
+                logger.info(f"✅ Отправлено справочное сообщение пользователю {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в handle_message: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     def get_user_referral_stats(self, user_id: int):
         """Получение статистики рефералов пользователя"""
@@ -763,7 +895,7 @@ class PassiveNFTBot:
             return "Ошибка при получении реферальной статистики"
 
     async def run(self):
-        """Запуск бота с исправленным методом"""
+        """Запуск бота с улучшенной структурой"""
         logger.info("🚀 Запуск PassiveNFT Bot на Render...")
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
         logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
@@ -777,34 +909,53 @@ class PassiveNFTBot:
         await self.application.start()
 
         try:
-            # Запуск polling
-            await self.application.updater.start_polling()
+            # Запуск polling с улучшенной диагностикой
+            logger.info("🔄 Запуск polling режима...")
+            await self.application.updater.start_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+                bootstrap_retries=3,
+                timeout=10
+            )
             logger.info("✅ Бот запущен и ожидает команды...")
-            await asyncio.Event().wait()
+            logger.info("📡 Polling начат - бот готов к приему сообщений")
+            
+            # Бесконечное ожидание с обработкой прерываний
+            while True:
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    logger.info("⏹️ Получен сигнал остановки polling")
+                    break
+                    
         except Exception as e:
-            logger.error(f"❌ Ошибка запуска бота: {e}")
+            logger.error(f"❌ Критическая ошибка в polling: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
         finally:
             # Корректная остановка бота
+            logger.info("🛑 Начинаем корректную остановку бота...")
             try:
                 if self.application.updater.running:
                     self.application.updater.stop()
+                    logger.info("✅ Polling остановлен")
                 await self.application.stop()
                 await self.application.shutdown()
                 logger.info("✅ Бот корректно остановлен")
             except Exception as e:
-                logger.warning(f"⚠️ Ошибка при остановке: {e}")
+                logger.warning(f"⚠️ Ошибка при остановке бота: {e}")
 
 async def main():
-    """Главная функция запуска"""
+    """Главная функция запуска с улучшенной обработкой ошибок"""
     try:
+        logger.info("🎯 Инициализация PassiveNFT Bot...")
         bot = PassiveNFTBot()
+        logger.info("✅ Bot инициализирован, начинаем запуск...")
         await bot.run()
     except KeyboardInterrupt:
-        logger.info("👋 Получен сигнал остановки")
+        logger.info("👋 Получен сигнал остановки от пользователя")
     except Exception as e:
-        logger.error(f"❌ Критическая ошибка: {e}")
+        logger.error(f"❌ Критическая ошибка в main: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
@@ -825,19 +976,26 @@ async def start_web_server():
     await site.start()
     print(f"🚀 Web server started on port {port}")
 
-if __name__ == "__main__":
-    async def run_both():
-        """Запускает бота и веб-сервер одновременно"""
-        bot_instance = PassiveNFTBot()
+async def run_both():
+    """Запускает бота и веб-сервер одновременно с улучшенной обработкой ошибок"""
+    bot_instance = PassiveNFTBot()
+    try:
         await asyncio.gather(
             bot_instance.run(),  # Бот
             start_web_server()   # Веб-сервер
         )
-    
+    except Exception as e:
+        logger.error(f"❌ Ошибка в run_both: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
+
+if __name__ == "__main__":
     try:
+        logger.info("🔥 ЗАПУСК PassiveNFT Bot...")
         asyncio.run(run_both())
     except KeyboardInterrupt:
         logger.info("👋 Бот остановлен пользователем")
     except Exception as e:
         logger.error(f"❌ Ошибка запуска: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         sys.exit(1)
