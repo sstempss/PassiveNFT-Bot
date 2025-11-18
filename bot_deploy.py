@@ -266,7 +266,7 @@ class PassiveNFTBot:
             [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(welcome_text)
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
 
     async def confirm_payment_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды подтверждения оплаты и добавления реферала"""
