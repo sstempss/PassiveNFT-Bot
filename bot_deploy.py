@@ -424,7 +424,7 @@ class PassiveNFTBot:
         plan_index = int(query.data.split('_')[1])
         plan = self.config.SUBSCRIPTION_PLANS[plan_index]
 
-        # ИСПРАВЛЕННАЯ инструкция по оплате БЕЗ backticks внутри жирного текста
+        # ИСПРАВЛЕННАЯ инструкция по оплате БЕЗ backticks
         payment_text = f"""**💰 ОПЛАТА: {plan['price_ton']} TON**
 
 **Адрес кошелька:** `{self.config.TON_WALLET_ADDRESS}`
