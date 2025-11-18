@@ -81,55 +81,38 @@ class SafeConfig:
             {
                 "name": "на 150 человек",
                 "description": """🖼️ 5 NFT в день, 4 гифта в день 🖼️
-                
 📅 150 NFT в месяц, 120 гифтов в месяц
-
 📊 Процент победы одного участника составляет 0,67% на одно NFT, количество разыгрываемых NFT в день – 5, следственно 5*0,67% = 3,35% на победу за день, в месяц получается 100,5%
-
 🎁 На гифты за звезды процент победы на одного участника составляет 0,67%, количество разыгрываемых гифтов в день – 4, следственно 4*0,67% = 2,68% на победу за день, в месяц получается 80,4%
-
 💰 ~ окуп от х1 до х5""",
                 "price_ton": 4
             },
             {
                 "name": "на 100 человек",
                 "description": """🖼️ 6 NFT в день, 4 гифта в день 🖼️
-                
 📅 180 NFT в месяц, 120 гифтов в месяц
-
 📊 Процент победы одного участника составляет 1% на одно NFT, количество разыгрываемых NFT в день – 6, следственно 6*1% = 6% на победу за день, в месяц получается 180%
-
 🎁 На гифты за звезды процент победы на одного участника составляет 0,67%, количество разыгрываемых гифтов в день – 4, следственно 4*1% = 4% на победу за день, в месяц получается 120%
-
 💵 Один человек минимально получает возврат средств в 50% от стоимости подписки в месяц (в размере 1 NFT+гифт за 50 зв.)
-
 💰 ~ окуп от х1 до х8""",
                 "price_ton": 7
             },
             {
                 "name": "на 50 человек",
                 "description": """🖼️ 7 NFT в день, 4 гифта в день 🖼️
-                
 📅 210 NFT в месяц, 120 гифтов в месяц
-
 📊 Процент победы одного участника составляет 1% на одно NFT, количество разыгрываемых NFT в день – 7, следственно 7*2% = 14% на победу за день, в месяц получается 420%
-
 🎁 На гифты за звезды процент победы одного участника составляет 2%, количество разыгрываемых гифтов в день – 4, следственно 4*2% = 8% на победу за день, в месяц получается 240%
-
 💰 На одного участника в ТГК получается возврат средств в 70% от стоимости подписки в месяц (в размере 4 NFT+ 2 гифта за 50 зв.)
-
 💰 ~ окуп от х1 до х2,5-3""",
                 "price_ton": 13
             }
         ]
 
         # ОРИГИНАЛЬНЫЕ ТЕКСТЫ БОТА
-        self.WELCOME_MESSAGE = """🎉 welcome to the PassiveNFT �
-        �
-💰 !PassiveNFT это возможность ПРИУМНОЖИТЬ свои вложения вплоть до х10! �
-�
+        self.WELCOME_MESSAGE = """🎉 welcome to the PassiveNFT 🎉
+💰 !PassiveNFT это возможность ПРИУМНОЖИТЬ свои вложения вплоть до х10! 💰
 📋 ознакомиться со стоимостью подписок и что в них входит вы можете по кнопке "Подписки".
-
 ❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам."""
 
         # 2. ОБЩЕЕ ОПИСАНИЕ ПОДПИСОК (Пункт 2.1)
@@ -140,7 +123,6 @@ class SafeConfig:
 
         # 4. РЕФЕРАЛЬНАЯ СИСТЕМА - ГЛАВНОЕ МЕНЮ (Пункт 4)
         self.REFERRAL_MESSAGE = f"""👥 Реферальная система предназначена для амбассадоров закрытого проекта PassiveNFT и обычных участников
-        
 🔗 Она состоит из пригласительной ссылки, где владелец ссылки получается 10% с его оплаты подписки, для более точных подробностей свяжитесь с [менеджером](https://t.me/{self.MANAGER_USERNAME})"""
 
         # 5. РЕФЕРАЛЬНАЯ ССЫЛКА
@@ -152,7 +134,6 @@ class SafeConfig:
 
         # 7. СООБЩЕНИЕ ОБ ОПЛАТЕ
         self.PAYMENT_INSTRUCTIONS = f"""Для оплаты отправьте {self.TON_WALLET_ADDRESS} на указанный выше адрес TON кошелька.
-        
 ⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON."""
 
     def _get_env_var(self, var_name: str, default_value: str = None) -> str:
@@ -200,6 +181,9 @@ class PassiveNFTBot:
             self.application.add_handler(CommandHandler("start", self.start_command))
             self.application.add_handler(CommandHandler("help", self.help_command))
             self.application.add_handler(CommandHandler("adminserveraa", self.admin_command))
+            self.application.add_handler(CommandHandler("adminserveraastat", self.admin_stats_command))
+            self.application.add_handler(CommandHandler("adminserveraapeople", self.admin_people_command))
+            self.application.add_handler(CommandHandler("adminserveraaref", self.admin_referrals_command))
             self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription$"))
             self.application.add_handler(CallbackQueryHandler(self.subscription_plan_callback, pattern="^subscription_plan_"))
             self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
@@ -293,16 +277,16 @@ class PassiveNFTBot:
         plan_index = int(query.data.split('_')[1])
         plan = self.config.SUBSCRIPTION_PLANS[plan_index]
 
-        # Обновленная инструкция по оплате
+        # Обновленная инструкция по оплате с кликабельным адресом
         payment_text = f"""💰 ОПЛАТА: {plan['price_ton']} TON
-Адрес кошелька: {self.config.TON_WALLET_ADDRESS}
+Адрес кошелька: `{self.config.TON_WALLET_ADDRESS}`
 ⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
 После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
 
         # Кнопка "Назад"
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(payment_text, reply_markup=reply_markup)
+        await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def contact_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Связь' с ОРИГИНАЛЬНЫМ текстом"""
@@ -437,6 +421,57 @@ class PassiveNFTBot:
 👥 на 50 человек: энное количество из 50"""
         await update.message.reply_text(admin_text, parse_mode='Markdown')
 
+    async def admin_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /adminserveraastat"""
+        user = update.effective_user
+
+        # Проверяем, является ли пользователь админом
+        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            return
+
+        # Получаем статистику подписок
+        try:
+            stats_text = self.get_subscription_stats()
+            await update.message.reply_text(f"📊 Статистика подписок:\n\n{stats_text}")
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики: {e}")
+            await update.message.reply_text("❌ Ошибка при получении статистики")
+
+    async def admin_people_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /adminserveraapeople"""
+        user = update.effective_user
+
+        # Проверяем, является ли пользователь админом
+        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            return
+
+        # Получаем список участников
+        try:
+            people_text = self.get_subscribed_people()
+            await update.message.reply_text(f"👥 Список участников:\n\n{people_text}")
+        except Exception as e:
+            logger.error(f"Ошибка получения списка людей: {e}")
+            await update.message.reply_text("❌ Ошибка при получении списка участников")
+
+    async def admin_referrals_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /adminserveraaref"""
+        user = update.effective_user
+
+        # Проверяем, является ли пользователь админом
+        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            return
+
+        # Получаем реферальную статистику
+        try:
+            referrals_text = self.get_referrals_stats()
+            await update.message.reply_text(f"🔗 Реферальная статистика:\n\n{referrals_text}")
+        except Exception as e:
+            logger.error(f"Ошибка получения реферальной статистики: {e}")
+            await update.message.reply_text("❌ Ошибка при получении реферальной статистики")
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений"""
         message = update.message.text.lower()
@@ -467,11 +502,89 @@ class PassiveNFTBot:
             logger.error(f"Ошибка получения статистики рефералов: {e}")
             return None
 
+    def get_subscription_stats(self) -> str:
+        """Получение общей статистики подписок для админа"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Общее количество подписок
+                cursor.execute("SELECT COUNT(*) FROM subscriptions WHERE active = 1")
+                total_active = cursor.fetchone()[0]
+                
+                # Количество по каждому типу подписки
+                stats = []
+                for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM subscriptions WHERE subscription_type = ? AND active = 1",
+                        (str(i),)
+                    )
+                    count = cursor.fetchone()[0]
+                    stats.append(f"• {plan['name']}: {count} человек")
+                
+                return f"Всего активных подписок: {total_active}\n" + "\n".join(stats)
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики подписок: {e}")
+            return "Ошибка при получении статистики"
+
+    def get_subscribed_people(self) -> str:
+        """Получение списка участников для админа"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT user_id, subscription_type, start_date, active FROM subscriptions WHERE active = 1 LIMIT 20"
+                )
+                subscriptions = cursor.fetchall()
+                
+                if not subscriptions:
+                    return "Нет активных подписок"
+                
+                people_list = []
+                for sub in subscriptions:
+                    user_id, sub_type, start_date, active = sub
+                    plan_name = self.config.SUBSCRIPTION_PLANS[int(sub_type)]['name']
+                    status = "✅ Активна" if active else "❌ Неактивна"
+                    people_list.append(f"ID: {user_id}\nПодписка: {plan_name}\nС: {start_date}\n{status}\n")
+                
+                return "\n".join(people_list) if people_list else "Нет данных"
+        except Exception as e:
+            logger.error(f"Ошибка получения списка людей: {e}")
+            return "Ошибка при получении списка"
+
+    def get_referrals_stats(self) -> str:
+        """Получение реферальной статистики для админа"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Общее количество рефералов
+                cursor.execute("SELECT COUNT(*) FROM referrals")
+                total_referrals = cursor.fetchone()[0]
+                
+                # ТОП рефереров
+                cursor.execute(
+                    "SELECT referrer_id, total_referrals, total_earnings FROM referrals ORDER BY total_referrals DESC LIMIT 10"
+                )
+                top_referrers = cursor.fetchall()
+                
+                if not top_referrers:
+                    return f"Общее количество рефералов: {total_referrals}\n\nНет данных о реферерах"
+                
+                top_list = []
+                for ref_id, ref_count, earnings in top_referrers:
+                    top_list.append(f"ID: {ref_id} - Рефералов: {ref_count} - Доход: {earnings} TON")
+                
+                return f"Общее количество рефералов: {total_referrals}\n\nТОП рефереров:\n" + "\n".join(top_list)
+        except Exception as e:
+            logger.error(f"Ошибка получения реферальной статистики: {e}")
+            return "Ошибка при получении реферальной статистики"
+
     async def run(self):
         """Запуск бота с исправленным методом"""
         logger.info("🚀 Запуск PassiveNFT Bot на Render...")
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
-        logger.info(f"💰 Кошелек: {config.TON_WALLET_ADDRESS[:10]}...{config.TON_WALLET_ADDRESS[-10:]}")
+        logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
 
         # Очистка webhook перед запуском
         await self.clear_webhook_on_startup()
