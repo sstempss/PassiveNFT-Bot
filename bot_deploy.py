@@ -315,6 +315,8 @@ class PassiveNFTBot:
             
             # Обработчики подписок
             self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription$"))
+            self.application.add_handler(CallbackQueryHandler(self.select_stars_callback, pattern="^select_stars$"))
+            self.application.add_handler(CallbackQueryHandler(self.select_ton_callback, pattern="^select_ton$"))
             self.application.add_handler(CallbackQueryHandler(self.subscription_plan_callback, pattern="^subscription_plan_"))
             self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
             
@@ -503,15 +505,12 @@ class PassiveNFTBot:
             # ОРИГИНАЛЬНОЕ общее описание подписок
             subscription_text = self.config.SUBSCRIPTION_DESCRIPTION
 
-            # ОРИГИНАЛЬНЫЕ кнопки подписок
-            keyboard = []
-            for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
-                button_text = plan['name']
-                callback_data = f"subscription_plan_{i}"
-                keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
-
-            # Кнопка "Назад"
-            keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
+            # КНОПКИ ВЫБОРА ТИПА ПОДПИСКИ
+            keyboard = [
+                [InlineKeyboardButton("⚡ С активностями (за звездочки)", callback_data="select_stars")],
+                [InlineKeyboardButton("💎 Без активностей (за TON)", callback_data="select_ton")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+            ]
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
@@ -578,9 +577,8 @@ class PassiveNFTBot:
 
 После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
 
-            # Кнопки: "Копировать TON адрес" и "Назад"
+            # Кнопка "Назад"
             keyboard = [
-                [InlineKeyboardButton("📋 Копировать TON адрес", callback_data=f"copy_ton_{plan_index}")],
                 [InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -622,6 +620,71 @@ class PassiveNFTBot:
             logger.error(f"Traceback: {traceback.format_exc()}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
+    async def select_stars_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик выбора активных подписок (звездочки)"""
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: select_stars callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Показываем описание активностей
+            activity_text = """⚡ АКТИВНЫЕ ПОДПИСКИ (ЗА ЗВЕЗДОЧКИ)
+
+за вход в стоимость в звездочки вы получите шанс приумножить свою вложения вплоть до х20, всё зависит лишь от вашей скорости и удачи.
+
+в подписку входят:
+
+✅ доступ к закрытому ТГК где проходят активности
+✅ различные активности КАЖДЫЙ час с 9:00 до 21:00 по МСК
+✅ 13 активнотей в ДЕНЬ
+✅ 390 активностей в МЕСЯЦ
+
+выдачи происходят в течении 5-7 минут после завершения активности."""
+
+            # Кнопки выбора уровня звездочек
+            keyboard = [
+                [InlineKeyboardButton("⭐️ ВХОД 25 ЗВЕЗДОЧЕК", callback_data="star_plan_25")],
+                [InlineKeyboardButton("⭐️ ВХОД 50 ЗВЕЗДОЧЕК", callback_data="star_plan_50")],
+                [InlineKeyboardButton("⭐️ ВХОД 75 ЗВЕЗДОЧЕК", callback_data="star_plan_75")],
+                [InlineKeyboardButton("⭐️ ВХОД 100 ЗВЕЗДОЧЕК", callback_data="star_plan_100")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(activity_text, reply_markup=reply_markup)
+            logger.info(f"✅ Активные подписки (звездочки) показаны пользователю {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в select_stars_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def select_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик выбора обычных подписок (TON)"""
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: select_ton callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # ОРИГИНАЛЬНОЕ общее описание подписок
+            subscription_text = self.config.SUBSCRIPTION_DESCRIPTION
+
+            # ОРИГИНАЛЬНЫЕ кнопки подписок (150/100/50)
+            keyboard = []
+            for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
+                button_text = plan['name']
+                callback_data = f"subscription_plan_{i}"
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+            # Кнопка "Назад"
+            keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="subscription")])
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(subscription_text, reply_markup=reply_markup)
+            logger.info(f"✅ Обычные подписки (TON) показаны пользователю {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в select_ton_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
     async def star_subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора конкретного плана звездочек"""
         logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: star_subscription_plan callback от пользователя {update.effective_user.id}")
@@ -629,10 +692,9 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            # Извлекаем количество звездочек и индекс плана
+            # Извлекаем количество звездочек
             parts = query.data.split('_')
             stars = int(parts[2])
-            plan_index = int(parts[3])
 
             # Находим соответствующий план звездочек
             star_plan = None
@@ -652,12 +714,12 @@ class PassiveNFTBot:
 
             # Кнопки: "Оплатить" и "Назад"
             keyboard = [
-                [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"stars_payment_{stars}_{plan_index}")],
-                [InlineKeyboardButton("🔙 Назад", callback_data=f"activity_subscription_{plan_index}")]
+                [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"stars_payment_{stars}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="select_stars")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(plan_text, reply_markup=reply_markup)
-            logger.info(f"✅ План звездочек {stars} для плана {plan_index} показан пользователю {update.effective_user.id}")
+            logger.info(f"✅ План звездочек {stars} показан пользователю {update.effective_user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в star_subscription_plan_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -670,10 +732,9 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            # Извлекаем количество звездочек и индекс плана
+            # Извлекаем количество звездочек
             parts = query.data.split('_')
             stars = int(parts[2])
-            plan_index = int(parts[3])
 
             # Находим соответствующий план звездочек
             star_plan = None
