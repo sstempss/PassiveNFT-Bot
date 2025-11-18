@@ -269,8 +269,13 @@ class PassiveNFTBot:
         await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def confirm_payment_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды подтверждения оплаты и добавления реферала"""
+        """Обработчик команды подтверждения оплаты и добавления реферала (ТОЛЬКО ДЛЯ АДМИНОВ)"""
         user = update.effective_user
+        
+        # Проверяем, является ли пользователь админом
+        if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            await update.message.reply_text("❌ У вас нет доступа к этой команде")
+            return
         
         # Проверяем, есть ли для этого пользователя ожидающий реферер
         pending_referrer = self.get_pending_referrer(user.id)
@@ -532,7 +537,7 @@ class PassiveNFTBot:
         help_text = f"""🤖 PassiveNFT Bot - Справка
 /start - Начать работу с ботом
 /help - Показать эту справку
-/confirm_payment - Подтвердить оплату и добавить реферала
+/confirm_payment - Подтвердить оплату и добавить реферала (админам)
 /adminserveraa - Админ панель (только для админов)
 💬 Для вопросов: @{self.config.MANAGER_USERNAME}"""
         await update.message.reply_text(help_text, parse_mode='Markdown')
@@ -543,18 +548,18 @@ class PassiveNFTBot:
 
         # Проверяем, является ли пользователь админом
         if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            await update.message.reply_text("❌ **У вас нет доступа к админ панели**", parse_mode='Markdown')
             return
 
         # ОРИГИНАЛЬНЫЙ текст админ панели
-        admin_text = """🔧 Админ панель PassiveNFT Bot
-📊 /adminserveraastat - статистика подписок
-👥 /adminserveraapeople - список участников
-🔗 /adminserveraaref - реферальная статистика
-💳 Количество подписок:
-👥 на 150 человек: энное количество из 150
-👥 на 100 человек: энное количество из 100
-👥 на 50 человек: энное количество из 50"""
+        admin_text = """**🔧 Админ панель PassiveNFT Bot**
+**📊 /adminserveraastat - статистика подписок**
+**👥 /adminserveraapeople - список участников**
+**🔗 /adminserveraaref - реферальная статистика**
+**💳 Количество подписок:**
+**👥 на 150 человек: энное количество из 150**
+**👥 на 100 человек: энное количество из 100**
+**👥 на 50 человек: энное количество из 50**"""
         await update.message.reply_text(admin_text, parse_mode='Markdown')
 
     async def admin_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -563,16 +568,16 @@ class PassiveNFTBot:
 
         # Проверяем, является ли пользователь админом
         if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            await update.message.reply_text("❌ **У вас нет доступа к админ панели**", parse_mode='Markdown')
             return
 
         # Получаем статистику подписок
         try:
             stats_text = self.get_subscription_stats()
-            await update.message.reply_text(f"📊 Статистика подписок:\n\n{stats_text}")
+            await update.message.reply_text(f"**📊 Статистика подписок:**\n\n{stats_text}", parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Ошибка получения статистики: {e}")
-            await update.message.reply_text("❌ Ошибка при получении статистики")
+            await update.message.reply_text("❌ **Ошибка при получении статистики**", parse_mode='Markdown')
 
     async def admin_people_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraapeople"""
@@ -580,16 +585,16 @@ class PassiveNFTBot:
 
         # Проверяем, является ли пользователь админом
         if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            await update.message.reply_text("❌ **У вас нет доступа к админ панели**", parse_mode='Markdown')
             return
 
         # Получаем список участников
         try:
             people_text = self.get_subscribed_people()
-            await update.message.reply_text(f"👥 Список участников:\n\n{people_text}")
+            await update.message.reply_text(f"**👥 Список участников:**\n\n{people_text}", parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Ошибка получения списка людей: {e}")
-            await update.message.reply_text("❌ Ошибка при получении списка участников")
+            await update.message.reply_text("❌ **Ошибка при получении списка участников**", parse_mode='Markdown')
 
     async def admin_referrals_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraaref"""
@@ -597,16 +602,16 @@ class PassiveNFTBot:
 
         # Проверяем, является ли пользователь админом
         if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-            await update.message.reply_text("❌ У вас нет доступа к админ панели")
+            await update.message.reply_text("❌ **У вас нет доступа к админ панели**", parse_mode='Markdown')
             return
 
         # Получаем реферальную статистику
         try:
             referrals_text = self.get_referrals_stats()
-            await update.message.reply_text(f"🔗 Реферальная статистика:\n\n{referrals_text}")
+            await update.message.reply_text(f"**🔗 Реферальная статистика:**\n\n{referrals_text}", parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Ошибка получения реферальной статистики: {e}")
-            await update.message.reply_text("❌ Ошибка при получении реферальной статистики")
+            await update.message.reply_text("❌ **Ошибка при получении реферальной статистики**", parse_mode='Markdown')
 
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений"""
@@ -617,8 +622,7 @@ class PassiveNFTBot:
             await self.admin_command(update, context)
         else:
             await update.message.reply_text(
-                "🤖 Используйте /start для начала работы или /help для справки",
-                parse_mode='Markdown'
+                "🤖 **Используйте /start для начала работы или /help для справки**", parse_mode='Markdown'
             )
 
     def get_user_referral_stats(self, user_id: int):
@@ -656,12 +660,12 @@ class PassiveNFTBot:
                         (str(i),)
                     )
                     count = cursor.fetchone()[0]
-                    stats.append(f"• {plan['name']}: {count} человек")
+                    stats.append(f"• **{plan['name']}: {count} человек**")
                 
                 return f"Всего активных подписок: {total_active}\n" + "\n".join(stats)
         except Exception as e:
             logger.error(f"Ошибка получения статистики подписок: {e}")
-            return "Ошибка при получении статистики"
+            return "**Ошибка при получении статистики**"
 
     def get_subscribed_people(self) -> str:
         """Получение списка участников для админа"""
@@ -674,19 +678,19 @@ class PassiveNFTBot:
                 subscriptions = cursor.fetchall()
                 
                 if not subscriptions:
-                    return "Нет активных подписок"
+                    return "**Нет активных подписок**"
                 
                 people_list = []
                 for sub in subscriptions:
                     user_id, sub_type, start_date, active = sub
                     plan_name = self.config.SUBSCRIPTION_PLANS[int(sub_type)]['name']
-                    status = "✅ Активна" if active else "❌ Неактивна"
+                    status = "**✅ Активна**" if active else "**❌ Неактивна**"
                     people_list.append(f"ID: {user_id}\nПодписка: {plan_name}\nС: {start_date}\n{status}\n")
                 
                 return "\n".join(people_list) if people_list else "Нет данных"
         except Exception as e:
             logger.error(f"Ошибка получения списка людей: {e}")
-            return "Ошибка при получении списка"
+            return "**Ошибка при получении списка**"
 
     def get_referrals_stats(self) -> str:
         """Получение реферальной статистики для админа"""
@@ -705,22 +709,22 @@ class PassiveNFTBot:
                 top_referrers = cursor.fetchall()
                 
                 if not top_referrers:
-                    return f"Общее количество рефералов: {total_referrals}\n\nНет данных о реферерах"
+                    return f"**Общее количество рефералов: {total_referrals}**\n\n**Нет данных о реферерах**"
                 
                 top_list = []
                 for ref_id, ref_count, earnings in top_referrers:
-                    top_list.append(f"ID: {ref_id} - Рефералов: {ref_count} - Доход: {earnings} TON")
+                    top_list.append(f"**ID: {ref_id} - Рефералов: {ref_count} - Доход: {earnings} TON**")
                 
-                return f"Общее количество рефералов: {total_referrals}\n\nТОП рефереров:\n" + "\n".join(top_list)
+                return f"**Общее количество рефералов: {total_referrals}**\n\n**ТОП рефереров:**\n" + "\n".join(top_list)
         except Exception as e:
             logger.error(f"Ошибка получения реферальной статистики: {e}")
-            return "Ошибка при получении реферальной статистики"
+            return "**Ошибка при получении реферальной статистики**"
 
     async def run(self):
         """Запуск бота с исправленным методом"""
         logger.info("🚀 Запуск PassiveNFT Bot на Render...")
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
-        logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
+        logger.info(f"💰 Кошелек: {config.TON_WALLET_ADDRESS[:10]}...{config.TON_WALLET_ADDRESS[-10:]}")
         logger.info("✅ Реферальная система включена")
 
         # Очистка webhook перед запуском
