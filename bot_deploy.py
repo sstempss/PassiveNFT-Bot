@@ -318,6 +318,7 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.select_stars_callback, pattern="^select_stars$"))
             self.application.add_handler(CallbackQueryHandler(self.select_ton_callback, pattern="^select_ton$"))
             self.application.add_handler(CallbackQueryHandler(self.subscription_plan_callback, pattern="^subscription_plan_"))
+            self.application.add_handler(CallbackQueryHandler(self.ton_subscription_plan_callback, pattern="^ton_subscription_plan_"))
             self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
             
             # Новые обработчики для активных подписок
@@ -528,6 +529,34 @@ class PassiveNFTBot:
             logger.error(f"Traceback: {traceback.format_exc()}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
+    async def ton_subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик выбора обычного плана TON (прямой переход к оплате)"""
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: ton_subscription_plan callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            plan_index = int(query.data.split('_')[2])
+            plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+
+            # Показываем описание плана без промежуточного выбора
+            plan_text = f"""📋 {plan['name']}
+
+{plan['description']}"""
+
+            # Кнопка "ОПЛАТИТЬ" и "Назад"
+            keyboard = [
+                [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"payment_{plan_index}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="select_ton")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(plan_text, reply_markup=reply_markup)
+            logger.info(f"✅ План TON {plan_index} показан пользователю {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в ton_subscription_plan_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
     async def subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора конкретной подписки - выбор типа подписки"""
         logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: subscription_plan callback от пользователя {update.effective_user.id}")
@@ -671,7 +700,7 @@ class PassiveNFTBot:
             keyboard = []
             for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
                 button_text = plan['name']
-                callback_data = f"subscription_plan_{i}"
+                callback_data = f"ton_subscription_plan_{i}"
                 keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
 
             # Кнопка "Назад"
@@ -758,8 +787,7 @@ class PassiveNFTBot:
 
             # Кнопка "Назад к плану"
             keyboard = [
-                [InlineKeyboardButton("📋 Копировать TON адрес", callback_data=f"copy_stars_ton_{stars}_{plan_index}")],
-                [InlineKeyboardButton("🔙 Назад", callback_data=f"star_plan_{stars}_{plan_index}")]
+                [InlineKeyboardButton("🔙 Назад", callback_data=f"star_plan_{stars}")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
