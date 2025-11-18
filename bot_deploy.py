@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PassiveNFT Bot - ВЕРСИЯ С УЛУЧШЕННЫМ ЛОГИРОВАНИЕМ (для диагностики проблем)
+PassiveNFT Bot - ВЕРСИЯ С АКТИВНЫМИ ПОДПИСКАМИ (за звездочки)
 """
 import asyncio
 import logging
@@ -74,7 +74,7 @@ class Database:
             raise
 
 class SafeConfig:
-    """Безопасная конфигурация бота без жирного текста"""
+    """Безопасная конфигурация бота с активными подписками"""
     def __init__(self):
         # Основные настройки
         self.BOT_TOKEN = self._get_env_var('BOT_TOKEN', '8530441136:AAHto3A4Zqa5FnGG01cxL6SvU3jW8_Ai0iI')
@@ -84,6 +84,9 @@ class SafeConfig:
         self.TON_WALLET_ADDRESS = self._get_env_var('TON_WALLET_ADDRESS', 'UQAij8pQ3HhdBn3lw6n9Iy2toOH9OMcBuL8yoSXTNpLJdfZJ')
         self.MANAGER_USERNAME = self._get_env_var('MANAGER_USERNAME', 'num6er9')
         self.BOT_USERNAME = self._get_env_var('BOT_USERNAME', 'PassiveNFT')
+        
+        # Настройки для активных подписок
+        self.STARS_USERNAME = self._get_env_var('STARS_USERNAME', 'alvatas')
 
         # Настройки подписок - БЕЗ ЖИРНОГО ТЕКСТА
         self.SUBSCRIPTION_PLANS = [
@@ -174,6 +177,92 @@ class SafeConfig:
 
 ❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам."""
 
+        # НОВЫЕ КОНСТАНТЫ ДЛЯ АКТИВНЫХ ПОДПИСОК
+        self.ACTIVITY_SUBSCRIPTION_TYPE_MESSAGE = """После перехода по кнопке подписки, выберите желаемый тип подписки:"""
+
+        self.ACTIVITY_SUBSCRIPTION_DESCRIPTION = """активные подписки представляют собой менее затратный способ получить возможность приумножить свои вложения путем участия в различных активностях
+
+чтобы ознакомиться с тем что входит в подписку, выберите заинтересовавший вас вариант снизу"""
+
+        # Описания для каждого уровня звездочек
+        self.STAR_SUBSCRIPTION_PLANS = [
+            {
+                "stars": 25,
+                "ton_price": 0.2,
+                "lot_cost": 15,
+                "description": """за вход в стоимость в 25 ЗВЕЗДОЧЕК вы получи шанс приумножить свою вложения вплоть до х20, всё зависит лишь от вашей скорости и удачи.
+
+стоимость розыгрываемого лота в активностях 15 звездочек, в день происходит 13 активностей, которые идут каждый день в течении 30 дней с момента запуска ТГК
+
+в подписку входят:
+
+✅ доступ к закрытому ТГК где проходят активности
+✅ различные активности КАЖДЫЙ час с 9:00 до 21:00 по МСК
+✅ 13 активнотей в ДЕНЬ
+✅ 390 активностей в МЕСЯЦ
+
+выдачи происходят в течении 5-7 минут после завершения активности."""
+            },
+            {
+                "stars": 50,
+                "ton_price": 0.4,
+                "lot_cost": 25,
+                "description": """за вход в стоимость в 50 ЗВЕЗДОЧЕК вы получи шанс приумножить свою вложения вплоть до х20, всё зависит лишь от вашей скорости и удачи.
+
+стоимость розыгрываемого лота в активностях 25 звездочек, в день происходит 13 активностей которые идут каждый день в течении 30 дней с момента запуска ТГК
+
+в подписку входят:
+
+✅ доступ к закрытому ТГК где проходят активности
+✅ различные активности КАЖДЫЙ час с 9:00 до 21:00 по МСК
+✅ 13 активнотей в ДЕНЬ
+✅ 390 активностей в МЕСЯЦ
+
+выдачи происходят в течении 5-7 минут после завершения активности."""
+            },
+            {
+                "stars": 75,
+                "ton_price": 0.6,
+                "lot_cost": 50,
+                "description": """за вход в стоимость в 75 ЗВЕЗДОЧЕК вы получи шанс приумножить свою вложения вплоть до х20, всё зависит лишь от вашей скорости и удачи.
+
+стоимость розыгрываемого лота в активностях 50 звездочек, в день происходит 13 активностей которые идут каждый день в течении 30 дней с момента запуска ТГК
+
+в подписку входят:
+
+✅ доступ к закрытому ТГК где проходят активности
+✅ различные активности КАЖДЫЙ час с 9:00 до 21:00 по МСК
+✅ 13 активнотей в ДЕНЬ
+✅ 390 активностей в МЕСЯЦ
+
+выдачи происходят в течении 5-7 минут после завершения активности."""
+            },
+            {
+                "stars": 100,
+                "ton_price": 0.8,
+                "lot_cost": 50,
+                "description": """за вход в стоимость в 100 ЗВЕЗДОЧЕК вы получите шанс приумножить свою вложения вплоть до х20, всё зависит лишь от вашей скорости и удачи.
+
+стоимость розыгрываемого лота в активностях 50 звездочек, в день происходит 13 активностей которые идут каждый день в течении 30 дней с момента запуска ТГК
+
+в подписку входят:
+
+✅ доступ к закрытому ТГК где проходят активности
+✅ различные активности КАЖДЫЙ час с 9:00 до 21:00 по МСК
+✅ 13 активнотей в ДЕНЬ
+✅ 390 активностей в МЕСЯЦ
+
+выдачи происходят в течении 5-7 минут после завершения активности."""
+            }
+        ]
+
+        # Сообщения для оплаты через звездочки
+        self.STARS_PAYMENT_MESSAGE_TEMPLATE = """для оплаты по TON кошельку нажмите на <a href="ton://transfer?amount={ton_amount}&address={wallet_address}">{wallet_address}</a> и отправьте {ton_amount} TON (эквивалентно ~{stars} звездам).
+
+для оплаты ЗВЕЗДОЧКАМИ перейдите <a href="https://t.me/{stars_username}">сюда</a> и отправьте подарком стоимость подписки + оплата комиссии
+
+после оплаты обратитесь к менеджеру <a href="https://t.me/{manager_username}">здесь</a> для подтверждения оплаты и для получения ссылки в закрытый ТГК."""
+
     def _get_env_var(self, var_name: str, default_value: str = None) -> str:
         """Безопасное получение переменной окружения"""
         import os
@@ -198,7 +287,7 @@ except Exception as e:
 
 
 class PassiveNFTBot:
-    """Главный класс бота с улучшенным логированием"""
+    """Главный класс бота с активными подписками"""
     def __init__(self):
         self.config = config
         self.database = Database()
@@ -223,9 +312,19 @@ class PassiveNFTBot:
             self.application.add_handler(CommandHandler("adminserveraastat", self.admin_stats_command))
             self.application.add_handler(CommandHandler("adminserveraapeople", self.admin_people_command))
             self.application.add_handler(CommandHandler("adminserveraaref", self.admin_referrals_command))
+            
+            # Обработчики подписок
             self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription$"))
             self.application.add_handler(CallbackQueryHandler(self.subscription_plan_callback, pattern="^subscription_plan_"))
             self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
+            
+            # Новые обработчики для активных подписок
+            self.application.add_handler(CallbackQueryHandler(self.activity_subscription_callback, pattern="^activity_subscription_"))
+            self.application.add_handler(CallbackQueryHandler(self.star_subscription_plan_callback, pattern="^star_plan_"))
+            self.application.add_handler(CallbackQueryHandler(self.stars_payment_callback, pattern="^stars_payment_"))
+            self.application.add_handler(CallbackQueryHandler(self.copy_stars_ton_callback, pattern="^copy_stars_ton_"))
+            
+            # Существующие обработчики
             self.application.add_handler(CallbackQueryHandler(self.contact_callback, pattern="^contact$"))
             self.application.add_handler(CallbackQueryHandler(self.referral_callback, pattern="^referral$"))
             self.application.add_handler(CallbackQueryHandler(self.get_referral_link_callback, pattern="^get_referral$"))
@@ -242,7 +341,7 @@ class PassiveNFTBot:
     async def clear_webhook_on_startup(self):
         """Очистка webhook перед запуском для решения конфликтов"""
         try:
-            logger.info("🧹 Очистка старых webhook'ов...")
+            logger.info("🧹 Очистка старных webhook'ов...")
             await self.application.bot.delete_webhook(drop_pending_updates=True)
             logger.info("✅ Webhook очищен успешно")
             await asyncio.sleep(2)
@@ -431,7 +530,7 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик выбора конкретной подписки с ОРИГИНАЛЬНЫМ описанием"""
+        """Обработчик выбора конкретной подписки - выбор типа подписки"""
         logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: subscription_plan callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
@@ -440,17 +539,20 @@ class PassiveNFTBot:
             plan_index = int(query.data.split('_')[2])
             plan = self.config.SUBSCRIPTION_PLANS[plan_index]
 
-            # ОРИГИНАЛЬНОЕ описание подписки
-            plan_text = plan['description']
+            # Показываем выбор типа подписки
+            plan_text = f"""📋 {plan['name']}
 
-            # ОРИГИНАЛЬНЫЕ кнопки: "Оплатить" и "Назад"
+{self.config.ACTIVITY_SUBSCRIPTION_TYPE_MESSAGE}"""
+
+            # Кнопки: "С активностями (за звездочки)" и "Без активностей (за TON)"
             keyboard = [
-                [InlineKeyboardButton("💳 Оплатить", callback_data=f"payment_{plan_index}")],
+                [InlineKeyboardButton("⚡ С активностями (за звездочки)", callback_data=f"activity_subscription_{plan_index}")],
+                [InlineKeyboardButton("💎 Без активностей (за TON)", callback_data=f"payment_{plan_index}")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(plan_text, reply_markup=reply_markup)
-            logger.info(f"✅ План {plan_index} открыт для пользователя {update.effective_user.id}")
+            logger.info(f"✅ Выбор типа подписки для плана {plan_index} показан пользователю {update.effective_user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в subscription_plan_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -486,6 +588,167 @@ class PassiveNFTBot:
             logger.info(f"✅ Оплата для плана {plan_index} открыта для пользователя {update.effective_user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в payment_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def activity_subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик выбора активных подписок"""
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: activity_subscription callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            plan_index = int(query.data.split('_')[2])
+            plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+
+            # Показываем описание активностей
+            activity_text = f"""⚡ {plan['name']}
+
+{self.config.ACTIVITY_SUBSCRIPTION_DESCRIPTION}"""
+
+            # Кнопки выбора уровня звездочек
+            keyboard = [
+                [InlineKeyboardButton("⭐️ ВХОД 25 ЗВЕЗДОЧЕК", callback_data=f"star_plan_25_{plan_index}")],
+                [InlineKeyboardButton("⭐️ ВХОД 50 ЗВЕЗДОЧЕК", callback_data=f"star_plan_50_{plan_index}")],
+                [InlineKeyboardButton("⭐️ ВХОД 75 ЗВЕЗДОЧЕК", callback_data=f"star_plan_75_{plan_index}")],
+                [InlineKeyboardButton("⭐️ ВХОД 100 ЗВЕЗДОЧЕК", callback_data=f"star_plan_100_{plan_index}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(activity_text, reply_markup=reply_markup)
+            logger.info(f"✅ Активные подписки для плана {plan_index} показаны пользователю {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в activity_subscription_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def star_subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик выбора конкретного плана звездочек"""
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: star_subscription_plan callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Извлекаем количество звездочек и индекс плана
+            parts = query.data.split('_')
+            stars = int(parts[2])
+            plan_index = int(parts[3])
+
+            # Находим соответствующий план звездочек
+            star_plan = None
+            for plan in self.config.STAR_SUBSCRIPTION_PLANS:
+                if plan['stars'] == stars:
+                    star_plan = plan
+                    break
+
+            if not star_plan:
+                await query.answer("❌ Ошибка: план не найден")
+                return
+
+            # Показываем описание плана звездочек
+            plan_text = f"""⭐️ ВХОД {stars} ЗВЕЗДОЧЕК
+
+{star_plan['description']}"""
+
+            # Кнопки: "Оплатить" и "Назад"
+            keyboard = [
+                [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"stars_payment_{stars}_{plan_index}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data=f"activity_subscription_{plan_index}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(plan_text, reply_markup=reply_markup)
+            logger.info(f"✅ План звездочек {stars} для плана {plan_index} показан пользователю {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в star_subscription_plan_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def stars_payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик оплаты через звездочки"""
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: stars_payment callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Извлекаем количество звездочек и индекс плана
+            parts = query.data.split('_')
+            stars = int(parts[2])
+            plan_index = int(parts[3])
+
+            # Находим соответствующий план звездочек
+            star_plan = None
+            for plan in self.config.STAR_SUBSCRIPTION_PLANS:
+                if plan['stars'] == stars:
+                    star_plan = plan
+                    break
+
+            if not star_plan:
+                await query.answer("❌ Ошибка: план не найден")
+                return
+
+            # Формируем сообщение об оплате
+            payment_text = self.config.STARS_PAYMENT_MESSAGE_TEMPLATE.format(
+                ton_amount=star_plan['ton_price'],
+                wallet_address=self.config.TON_WALLET_ADDRESS,
+                stars=stars,
+                stars_username=self.config.STARS_USERNAME,
+                manager_username=self.config.MANAGER_USERNAME
+            )
+
+            # Кнопка "Назад к плану"
+            keyboard = [
+                [InlineKeyboardButton("📋 Копировать TON адрес", callback_data=f"copy_stars_ton_{stars}_{plan_index}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data=f"star_plan_{stars}_{plan_index}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
+            logger.info(f"✅ Оплата через звездочки {stars} показана пользователю {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в stars_payment_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def copy_stars_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик копирования TON адреса для звездочек"""
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: copy_stars_ton callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Извлекаем количество звездочек и индекс плана
+            parts = query.data.split('_')
+            stars = int(parts[3])
+            plan_index = int(parts[4])
+
+            # Находим соответствующий план звездочек
+            star_plan = None
+            for plan in self.config.STAR_SUBSCRIPTION_PLANS:
+                if plan['stars'] == stars:
+                    star_plan = plan
+                    break
+
+            if not star_plan:
+                await query.answer("❌ Ошибка: план не найден")
+                return
+
+            # Показываем сообщение с инструкцией по копированию
+            copy_instruction = f"""📋 Копируйте TON адрес для оплаты активной подписки на {stars} звездочек:
+
+<code>{self.config.TON_WALLET_ADDRESS}</code>
+
+💡 Для копирования:
+• Нажмите на адрес выше
+• Скопируйте и отправьте {star_plan['ton_price']} TON
+
+После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения."""
+
+            # Кнопка "Назад к оплате"
+            keyboard = [[InlineKeyboardButton("🔙 Назад к оплате", callback_data=f"stars_payment_{stars}_{plan_index}")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(copy_instruction, reply_markup=reply_markup, parse_mode='HTML')
+            logger.info(f"✅ Инструкция по копированию TON для {stars} звездочек отправлена")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в copy_stars_ton_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
@@ -900,6 +1163,7 @@ class PassiveNFTBot:
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
         logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
         logger.info("✅ Реферальная система включена")
+        logger.info("⭐️ Активные подписки за звездочки включены")
 
         # Очистка webhook перед запуском
         await self.clear_webhook_on_startup()
