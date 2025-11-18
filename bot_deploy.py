@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PassiveNFT Bot - ВЕРСИЯ С ИСПРАВЛЕННОЙ РЕГИСТРАЦИЕЙ ПОЛЬЗОВАТЕЛЕЙ
+PassiveNFT Bot - ВЕРСИЯ С ИСПРАВЛЕННОЙ СИСТЕМОЙ РЕФЕРАЛОВ И СТАТУСОМ "ОПЛАТИВШИХ"
 """
 import asyncio
 import logging
@@ -272,7 +272,7 @@ except Exception as e:
 
 
 class PassiveNFTBot:
-    """Главный класс бота с активными подписками"""
+    """Главный класс бота с исправленной системой рефералов и статусом "оплативших" """
     def __init__(self):
         self.config = config
         self.database = Database()
@@ -300,6 +300,7 @@ class PassiveNFTBot:
             self.application.add_handler(CommandHandler("adminserveraastat", self.admin_stats_command))
             self.application.add_handler(CommandHandler("adminserveraapeople", self.admin_people_command))
             self.application.add_handler(CommandHandler("adminserveraaref", self.admin_referrals_command))
+            self.application.add_handler(CommandHandler("adminserveraaactivate", self.admin_activate_subscription_command))
             self.application.add_handler(CommandHandler("broadcast", self.broadcast_command))
             
             # Обработчики подписок
@@ -395,24 +396,36 @@ class PassiveNFTBot:
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def confirm_payment_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды подтверждения оплаты и добавления реферала"""
+        """Обработчик команды подтверждения оплаты и добавления реферала + АКТИВАЦИЯ ПОДПИСКИ"""
         logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /confirm_payment от пользователя {update.effective_user.id}")
         try:
             user = update.effective_user
             
             # Проверяем, есть ли для этого пользователя ожидающий реферер
             pending_referrer = self.get_pending_referrer(user.id)
+            
+            # Создаем/обновляем подписку пользователя (пользователь становится "оплатившим")
+            subscription_success = self.create_or_update_subscription(user.id, "0")  # Базовый план
+            
             if pending_referrer:
                 # Добавляем реферала в базу
-                success = self.add_referral(pending_referrer, user.id)
-                if success:
+                referral_success = self.add_referral(pending_referrer, user.id)
+                
+                if referral_success and subscription_success:
                     # Удаляем запись об ожидающем реферере
                     self.remove_pending_referral(user.id)
-                    await update.message.reply_text("✅ Оплата подтверждена! Реферал успешно добавлен.")
+                    await update.message.reply_text("✅ Оплата подтверждена! Подписка активирована, реферал успешно добавлен.")
+                elif subscription_success:
+                    await update.message.reply_text("✅ Оплата подтверждена! Подписка активирована, но произошла ошибка с рефералом.")
+                elif referral_success:
+                    await update.message.reply_text("✅ Реферал добавлен, но произошла ошибка с подпиской. Обратитесь к менеджеру.")
                 else:
-                    await update.message.reply_text("❌ Ошибка при добавлении реферала.")
+                    await update.message.reply_text("❌ Ошибка при обработке подписки и реферала.")
             else:
-                await update.message.reply_text("ℹ️ Для вас нет ожидающих рефереров.")
+                if subscription_success:
+                    await update.message.reply_text("✅ Оплата подтверждена! Подписка активирована.")
+                else:
+                    await update.message.reply_text("❌ Ошибка при активации подписки. Обратитесь к менеджеру.")
             
             logger.info(f"✅ /confirm_payment выполнен для пользователя {user.id}")
         except Exception as e:
@@ -491,6 +504,38 @@ class PassiveNFTBot:
                 return True
         except Exception as e:
             logger.error(f"Ошибка добавления реферала: {e}")
+            return False
+
+    def create_or_update_subscription(self, user_id: int, subscription_type: str = "0") -> bool:
+        """Создание или обновление подписки пользователя (делает его "оплатившим")"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Проверяем, есть ли уже подписка
+                cursor.execute("SELECT active FROM subscriptions WHERE user_id = ?", (user_id,))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Обновляем существующую подписку
+                    cursor.execute("""
+                        UPDATE subscriptions 
+                        SET active = 1, subscription_type = ?, start_date = ?
+                        WHERE user_id = ?
+                    """, (subscription_type, datetime.now().isoformat(), user_id))
+                    logger.info(f"Обновлена подписка для пользователя {user_id}")
+                else:
+                    # Создаем новую подписку
+                    cursor.execute("""
+                        INSERT INTO subscriptions (user_id, subscription_type, start_date, active)
+                        VALUES (?, ?, ?, 1)
+                    """, (user_id, subscription_type, datetime.now().isoformat()))
+                    logger.info(f"Создана новая подписка для пользователя {user_id}")
+                
+                conn.commit()
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка создания подписки для пользователя {user_id}: {e}")
             return False
 
     async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1023,6 +1068,7 @@ class PassiveNFTBot:
                 [InlineKeyboardButton("📊 Статистика", callback_data="admin_stats")],
                 [InlineKeyboardButton("👥 Люди", callback_data="admin_people")],
                 [InlineKeyboardButton("👤 Рефералы", callback_data="admin_referrals")],
+                [InlineKeyboardButton("🔓 Активировать подписку", callback_data="admin_activate")],
                 [InlineKeyboardButton("📢 Рассылка", callback_data="admin_broadcast")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1105,6 +1151,44 @@ class PassiveNFTBot:
                 await update.message.reply_text("❌ Ошибка при получении реферальной статистики")
         except Exception as e:
             logger.error(f"❌ Ошибка в admin_referrals_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def admin_activate_subscription_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /adminserveraaactivate для ручной активации подписки"""
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraaactivate от пользователя {update.effective_user.id}")
+        try:
+            user = update.effective_user
+
+            # Проверяем, является ли пользователь админом
+            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+                await update.message.reply_text("❌ У вас нет доступа к админ панели")
+                logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
+                return
+
+            # Проверяем аргументы команды
+            if not context.args or len(context.args) != 2:
+                await update.message.reply_text("❌ Используйте: /adminserveraaactivate <user_id> <subscription_type>")
+                await update.message.reply_text("Пример: /adminserveraaactivate 123456789 0")
+                return
+
+            try:
+                target_user_id = int(context.args[0])
+                subscription_type = context.args[1]
+                
+                # Активируем подписку
+                success = self.create_or_update_subscription(target_user_id, subscription_type)
+                
+                if success:
+                    await update.message.reply_text(f"✅ Подписка активирована для пользователя {target_user_id}")
+                    logger.info(f"Админ {user.id} активировал подписку для пользователя {target_user_id}")
+                else:
+                    await update.message.reply_text(f"❌ Ошибка активации подписки для пользователя {target_user_id}")
+                    
+            except ValueError:
+                await update.message.reply_text("❌ Некорректный формат user_id. Используйте только цифры.")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в admin_activate_subscription_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
@@ -1238,17 +1322,18 @@ class PassiveNFTBot:
             return "Ошибка при получении статистики"
 
     def get_subscribed_people(self) -> str:
-        """Получение списка участников для админа"""
+        """Получение списка участников для админа (ПОКАЗЫВАЕТ СТАТУС "ОПЛАТИВШИХ")"""
         try:
             with sqlite3.connect(self.database.db_path) as conn:
                 cursor = conn.cursor()
                 
-                # Сначала пробуем получить пользователей с подписками
+                # Сначала пробуем получить пользователей с подписками (ОПЛАТИВШИЕ)
                 cursor.execute("""
                     SELECT s.user_id, s.subscription_type, s.start_date, s.active, u.username, u.first_name 
                     FROM subscriptions s 
                     LEFT JOIN users u ON s.user_id = u.user_id 
                     WHERE s.active = 1 
+                    ORDER BY s.start_date DESC
                     LIMIT 20
                 """)
                 subscriptions = cursor.fetchall()
@@ -1264,10 +1349,10 @@ class PassiveNFTBot:
                 
                 result_lines = []
                 
-                # Сначала показываем пользователей с активными подписками
+                # Сначала показываем пользователей с активными подписками (ОПЛАТИВШИЕ)
                 if subscriptions:
-                    result_lines.append("👥 ПОЛЬЗОВАТЕЛИ С ПОДПИСКАМИ:")
-                    result_lines.append("=" * 40)
+                    result_lines.append("👥 ПОЛЬЗОВАТЕЛИ С ПОДПИСКАМИ (ОПЛАТИВШИЕ):")
+                    result_lines.append("=" * 50)
                     for sub in subscriptions:
                         user_id, sub_type, start_date, active, username, first_name = sub
                         plan_name = self.config.SUBSCRIPTION_PLANS[int(sub_type)]['name']
@@ -1278,12 +1363,12 @@ class PassiveNFTBot:
                 # Затем показываем всех зарегистрированных пользователей
                 if all_users:
                     if result_lines:
-                        result_lines.append("\n" + "=" * 40)
+                        result_lines.append("\n" + "=" * 50)
                         result_lines.append("📝 ВСЕ ЗАРЕГИСТРИРОВАННЫЕ ПОЛЬЗОВАТЕЛИ:")
-                        result_lines.append("=" * 40)
+                        result_lines.append("=" * 50)
                     else:
                         result_lines.append("📝 ЗАРЕГИСТРИРОВАННЫЕ ПОЛЬЗОВАТЕЛИ:")
-                        result_lines.append("=" * 40)
+                        result_lines.append("=" * 50)
                     
                     for user in all_users:
                         user_id, username, first_name, reg_date, referral_code = user
@@ -1330,6 +1415,7 @@ class PassiveNFTBot:
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
         logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
         logger.info("✅ Реферальная система включена")
+        logger.info("✅ Система статуса 'оплативших' исправлена")
         
         try:
             # Очистка webhook перед запуском
