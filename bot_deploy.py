@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PassiveNFT Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ С ПОЛНЫМ ЖИРНЫМ ФОРМАТИРОВАНИЕМ И КОРРЕКТНЫМ PARSE_MODE
+PassiveNFT Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ БЕЗ BACKTICKS - УСТРАНЕНИЕ ОШИБКИ MARKDOWN ПАРСИНГА
 """
 import asyncio
 import logging
@@ -74,7 +74,7 @@ class Database:
             raise
 
 class SafeConfig:
-    """Безопасная конфигурация бота с ЖИРНЫМ ФОРМАТИРОВАНИЕМ"""
+    """Безопасная конфигурация бота БЕЗ BACKTICKS"""
     def __init__(self):
         # Основные настройки
         self.BOT_TOKEN = self._get_env_var('BOT_TOKEN', '8530441136:AAHto3A4Zqa5FnGG01cxL6SvU3jW8_Ai0iI')
@@ -85,7 +85,7 @@ class SafeConfig:
         self.MANAGER_USERNAME = self._get_env_var('MANAGER_USERNAME', 'num6er9')
         self.BOT_USERNAME = self._get_env_var('BOT_USERNAME', 'PassiveNFT')
 
-        # Настройки подписок - С ЖИРНЫМ ФОРМАТИРОВАНИЕМ
+        # Настройки подписок - С ЖИРНЫМ ФОРМАТИРОВАНИЕМ БЕЗ BACKTICKS
         self.SUBSCRIPTION_PLANS = [
             {
                 "name": "на 150 человек",
@@ -118,7 +118,7 @@ class SafeConfig:
             }
         ]
 
-        # ТЕКСТЫ БОТА С ПОЛНЫМ ЖИРНЫМ ФОРМАТИРОВАНИЕМ
+        # ТЕКСТЫ БОТА С ПОЛНЫМ ЖИРНЫМ ФОРМАТИРОВАНИЕМ БЕЗ BACKTICKS
         self.WELCOME_MESSAGE = """**🎉 welcome to the __PassiveNFT__ 🎉**
 
 **💰 __PassiveNFT__ это возможность __ПРИУМНОЖИТЬ__ свои вложения вплоть до х10! 💰**
@@ -145,7 +145,7 @@ class SafeConfig:
 
 {referrals_info}"""
 
-        # 7. СООБЩЕНИЕ ОБ ОПЛАТЕ - ИСПРАВЛЕНО
+        # 7. СООБЩЕНИЕ ОБ ОПЛАТЕ - ИСПРАВЛЕНО БЕЗ BACKTICKS
         self.PAYMENT_INSTRUCTIONS = f"""**💰 ОПЛАТА:** 
 **Адрес кошелька:** {self.TON_WALLET_ADDRESS}
 **⚠️ ВАЖНО:** Скопируйте адрес кошелька и отправьте указанную сумму TON."""
@@ -185,7 +185,7 @@ except Exception as e:
 
 
 class PassiveNFTBot:
-    """Главный класс бота с полным жирным форматированием и исправленной реферальной системой"""
+    """Главный класс бота БЕЗ BACKTICKS - ПОЛНОСТЬЮ ИСПРАВЛЕНО"""
     def __init__(self):
         self.config = config
         self.database = Database()
@@ -417,17 +417,17 @@ class PassiveNFTBot:
         await query.message.edit_text(plan_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Оплатить' - ИСПРАВЛЕНО"""
+        """Обработчик кнопки 'Оплатить' - ПОЛНОСТЬЮ БЕЗ BACKTICKS"""
         query = update.callback_query
         await query.answer()
 
         plan_index = int(query.data.split('_')[1])
         plan = self.config.SUBSCRIPTION_PLANS[plan_index]
 
-        # ИСПРАВЛЕННАЯ инструкция по оплате БЕЗ backticks
+        # ПОЛНОСТЬЮ ИСПРАВЛЕНО - БЕЗ BACKTICKS, только звездочки
         payment_text = f"""**💰 ОПЛАТА: {plan['price_ton']} TON**
 
-**Адрес кошелька:** `{self.config.TON_WALLET_ADDRESS}`
+**Адрес кошелька:** {self.config.TON_WALLET_ADDRESS}
 
 **⚠️ ВАЖНО:** Скопируйте адрес кошелька и отправьте указанную сумму TON.
 
@@ -483,14 +483,16 @@ class PassiveNFTBot:
             await query.answer()
 
     async def get_referral_link_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик получения реферальной ссылки"""
+        """Обработчик получения реферальной ссылки - БЕЗ BACKTICKS"""
         query = update.callback_query
         await query.answer()
         user = query.from_user
 
         # Генерация персональной реферальной ссылки
         referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-        referral_link_text = f"**{self.config.REFERRAL_LINK_MESSAGE}**\n\n`{referral_link}`"
+        
+        # БЕЗ BACKTICKS - только звездочки
+        referral_link_text = f"**{self.config.REFERRAL_LINK_MESSAGE}**\n\n{referral_link}"
 
         # Кнопка "Назад"
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
@@ -740,6 +742,7 @@ class PassiveNFTBot:
         logger.info(f"💰 Кошелек: {config.TON_WALLET_ADDRESS[:10]}...{config.TON_WALLET_ADDRESS[-10:]}")
         logger.info("✅ Реферальная система включена")
         logger.info("✅ Жирное форматирование включено")
+        logger.info("❌ БЕЗ BACKTICKS - полностью исправлено")
 
         # Очистка webhook перед запуском
         await self.clear_webhook_on_startup()
