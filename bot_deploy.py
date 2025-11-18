@@ -536,7 +536,7 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            plan_index = int(query.data.split('_')[2])
+            plan_index = int(query.data.split('_')[3])
             plan = self.config.SUBSCRIPTION_PLANS[plan_index]
 
             # Показываем описание плана без промежуточного выбора
@@ -776,14 +776,17 @@ class PassiveNFTBot:
                 await query.answer("❌ Ошибка: план не найден")
                 return
 
-            # Формируем сообщение об оплате
-            payment_text = self.config.STARS_PAYMENT_MESSAGE_TEMPLATE.format(
-                ton_amount=star_plan['ton_price'],
-                wallet_address=self.config.TON_WALLET_ADDRESS,
-                stars=stars,
-                stars_username=self.config.STARS_USERNAME,
-                manager_username=self.config.MANAGER_USERNAME
-            )
+            # Формируем сообщение об оплате с кликабельным TON адресом
+            payment_text = f"""💰 ОПЛАТА: ~{star_plan['ton_price']} TON (эквивалентно ~{stars} звездам)
+
+ Адрес кошелька:
+<code>{self.config.TON_WALLET_ADDRESS}</code>
+
+для оплаты ЗВЕЗДОЧКАМИ перейдите <a href="https://t.me/{self.config.STARS_USERNAME}">сюда</a> и отправьте подарком стоимость подписки + оплата комиссии
+
+после оплаты обратитесь к менеджеру <a href="https://t.me/{self.config.MANAGER_USERNAME}">здесь</a> для подтверждения оплаты и для получения ссылки в закрытый ТГК.
+
+⚠️ ВАЖНО: Для копирования адреса кошелька нажмите на адрес выше."""
 
             # Кнопка "Назад к плану"
             keyboard = [
