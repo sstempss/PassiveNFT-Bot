@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PassiveNFT Bot - Оригинальные тексты восстановлены
+PassiveNFT Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ С РАБОЧЕЙ РЕФЕРАЛЬНОЙ СИСТЕМОЙ
 """
 import asyncio
 import logging
@@ -58,6 +58,15 @@ class Database:
                         total_earnings REAL DEFAULT 0.0
                     )
                 ''')
+                # Создаем таблицу для временного хранения информации о реферерах
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS pending_referrals (
+                        user_id INTEGER PRIMARY KEY,
+                        referrer_id INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES subscriptions (user_id)
+                    )
+                ''')
                 conn.commit()
             logger.info("База данных инициализирована")
         except Exception as e:
@@ -80,61 +89,76 @@ class SafeConfig:
         self.SUBSCRIPTION_PLANS = [
             {
                 "name": "на 150 человек",
-                "description": """🖼️ 5 NFT в день, 4 гифта в день 🖼️
-📅 150 NFT в месяц, 120 гифтов в месяц
+                "description": """**🖼️ 5 NFT в ДЕНЬ, 4 гифта в ДЕНЬ 🖼️**
+**📅 150 NFT в МЕСЯЦ, 120 гифтов в МЕСЯЦ**
 📊 Процент победы одного участника составляет 0,67% на одно NFT, количество разыгрываемых NFT в день – 5, следственно 5*0,67% = 3,35% на победу за день, в месяц получается 100,5%
 🎁 На гифты за звезды процент победы на одного участника составляет 0,67%, количество разыгрываемых гифтов в день – 4, следственно 4*0,67% = 2,68% на победу за день, в месяц получается 80,4%
-💰 ~ окуп от х1 до х5""",
+💰 **~ окуп от х1 до х5**""",
                 "price_ton": 4
             },
             {
                 "name": "на 100 человек",
-                "description": """🖼️ 6 NFT в день, 4 гифта в день 🖼️
-📅 180 NFT в месяц, 120 гифтов в месяц
+                "description": """**🖼️ 6 NFT в день, 4 гифта в день 🖼️**
+**📅 180 NFT в месяц, 120 гифтов в месяц**
 📊 Процент победы одного участника составляет 1% на одно NFT, количество разыгрываемых NFT в день – 6, следственно 6*1% = 6% на победу за день, в месяц получается 180%
 🎁 На гифты за звезды процент победы на одного участника составляет 0,67%, количество разыгрываемых гифтов в день – 4, следственно 4*1% = 4% на победу за день, в месяц получается 120%
 💵 Один человек минимально получает возврат средств в 50% от стоимости подписки в месяц (в размере 1 NFT+гифт за 50 зв.)
-💰 ~ окуп от х1 до х8""",
+💰 **~ окуп от х1 до х8**""",
                 "price_ton": 7
             },
             {
                 "name": "на 50 человек",
-                "description": """🖼️ 7 NFT в день, 4 гифта в день 🖼️
-📅 210 NFT в месяц, 120 гифтов в месяц
+                "description": """**🖼️ 7 NFT в день, 4 гифта в день 🖼️**
+**📅 210 NFT в месяц, 120 гифтов в месяц**
 📊 Процент победы одного участника составляет 1% на одно NFT, количество разыгрываемых NFT в день – 7, следственно 7*2% = 14% на победу за день, в месяц получается 420%
 🎁 На гифты за звезды процент победы одного участника составляет 2%, количество разыгрываемых гифтов в день – 4, следственно 4*2% = 8% на победу за день, в месяц получается 240%
 💰 На одного участника в ТГК получается возврат средств в 70% от стоимости подписки в месяц (в размере 4 NFT+ 2 гифта за 50 зв.)
-💰 ~ окуп от х1 до х2,5-3""",
+💰 **~ окуп от х1 до х2,5-3**""",
                 "price_ton": 13
             }
         ]
 
         # ОРИГИНАЛЬНЫЕ ТЕКСТЫ БОТА
-        self.WELCOME_MESSAGE = """🎉 welcome to the PassiveNFT 🎉
-💰 !PassiveNFT это возможность ПРИУМНОЖИТЬ свои вложения вплоть до х10! 💰
-📋 ознакомиться со стоимостью подписок и что в них входит вы можете по кнопке "Подписки".
-❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам."""
+        self.WELCOME_MESSAGE = """**🎉 welcome to the __PassiveNFT__ 🎉**
+
+**💰 __!PassiveNFT__ это возможность __ПРИУМНОЖИТЬ__ свои вложения вплоть до х10! 💰**
+
+**📋 ознакомиться со стоимостью подписок и что в них входит вы можете по кнопке "Подписки".**
+
+**❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам.**"""
 
         # 2. ОБЩЕЕ ОПИСАНИЕ ПОДПИСОК (Пункт 2.1)
-        self.SUBSCRIPTION_DESCRIPTION = "💳 Нажми на интересующую тебя подписку"
+        self.SUBSCRIPTION_DESCRIPTION = "**💳 Нажми на интересующую тебя подписку**"
 
         # 3. ТЕКСТ СВЯЗИ (Пункт 3)
-        self.CONTACT_MESSAGE = f"""💬 Если у вас возникли какие-либо трудности с оплатой или есть вопросы на которые здесь нет ответов, нажмите [сюда](https://t.me/{self.MANAGER_USERNAME}) для обращения к менеджеру по вопросам."""
+        self.CONTACT_MESSAGE = f"""**💬 Если у вас возникли какие-либо трудности с оплатой или есть вопросы на которые здесь нет ответов, нажмите [сюда](https://t.me/{self.MANAGER_USERNAME}) для обращения к менеджеру по вопросам.**"""
 
         # 4. РЕФЕРАЛЬНАЯ СИСТЕМА - ГЛАВНОЕ МЕНЮ (Пункт 4)
-        self.REFERRAL_MESSAGE = f"""👥 Реферальная система предназначена для амбассадоров закрытого проекта PassiveNFT и обычных участников
-🔗 Она состоит из пригласительной ссылки, где владелец ссылки получается 10% с его оплаты подписки, для более точных подробностей свяжитесь с [менеджером](https://t.me/{self.MANAGER_USERNAME})"""
+        self.REFERRAL_MESSAGE = f"""**👥 Реферальная система предназначена для амбассадоров закрытого проекта PassiveNFT и обычных участников**
+**🔗 Она состоит из пригласительной ссылки, где владелец ссылки получается 10% с его оплаты подписки, для более точных подробностей свяжитесь с [менеджером](https://t.me/{self.MANAGER_USERNAME})**"""
 
         # 5. РЕФЕРАЛЬНАЯ ССЫЛКА
-        self.REFERRAL_LINK_MESSAGE = "Ваша персональная реферальная ссылка: https://t.me/{bot_username}?start=ref_{user_id}"
+        self.REFERRAL_LINK_MESSAGE = "**Ваша персональная реферальная ссылка:**"
 
         # 6. СТАТИСТИКА РЕФЕРАЛОВ
-        self.REFERRAL_STATS_MESSAGE = """Статистика ваших рефералов:
+        self.REFERRAL_STATS_MESSAGE = """**Статистика ваших рефералов:**
+
 {referrals_info}"""
 
         # 7. СООБЩЕНИЕ ОБ ОПЛАТЕ
         self.PAYMENT_INSTRUCTIONS = f"""Для оплаты отправьте {self.TON_WALLET_ADDRESS} на указанный выше адрес TON кошелька.
 ⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON."""
+
+        # НОВЫЕ ТЕКСТЫ ДЛЯ РЕФЕРАЛЬНОЙ СИСТЕМЫ
+        self.REFERRAL_WELCOME_MESSAGE = """**🎉 welcome to the __PassiveNFT__ 🎉**
+
+**💰 __!PassiveNFT__ это возможность __ПРИУМНОЖИТЬ__ свои вложения вплоть до х10! 💰**
+
+**🔗 Вы пришли по реферальной ссылке! После оплаты ваш реферер получит 10% бонус.**
+
+**📋 ознакомиться со стоимостью подписок и что в них входит вы можете по кнопке "Подписки".**
+
+**❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам.**"""
 
     def _get_env_var(self, var_name: str, default_value: str = None) -> str:
         """Безопасное получение переменной окружения"""
@@ -160,7 +184,7 @@ except Exception as e:
 
 
 class PassiveNFTBot:
-    """Главный класс бота с оригинальными текстами"""
+    """Главный класс бота с оригинальными текстами и исправленной реферальной системой"""
     def __init__(self):
         self.config = config
         self.database = Database()
@@ -180,6 +204,7 @@ class PassiveNFTBot:
             # Регистрация обработчиков
             self.application.add_handler(CommandHandler("start", self.start_command))
             self.application.add_handler(CommandHandler("help", self.help_command))
+            self.application.add_handler(CommandHandler("confirm_payment", self.confirm_payment_command))
             self.application.add_handler(CommandHandler("adminserveraa", self.admin_command))
             self.application.add_handler(CommandHandler("adminserveraastat", self.admin_stats_command))
             self.application.add_handler(CommandHandler("adminserveraapeople", self.admin_people_command))
@@ -210,9 +235,29 @@ class PassiveNFTBot:
             logger.warning(f"⚠️ Ошибка при очистке webhook: {e}")
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /start с ОРИГИНАЛЬНЫМИ кнопками"""
-        # ОРИГИНАЛЬНОЕ ПРИВЕТСТВЕННОЕ СООБЩЕНИЕ
-        welcome_text = self.config.WELCOME_MESSAGE
+        """Обработчик команды /start с обработкой реферальных параметров"""
+        user = update.effective_user
+        args = context.args
+        
+        # Проверяем, есть ли реферальный параметр
+        referrer_id = None
+        if args and len(args) > 0:
+            arg = args[0]
+            if arg.startswith('ref_'):
+                try:
+                    referrer_id = int(arg[4:])  # Убираем "ref_" и получаем ID
+                    if referrer_id != user.id:  # Нельзя быть реферером самому себе
+                        # Сохраняем информацию о рефере временно
+                        self.save_pending_referral(user.id, referrer_id)
+                        logger.info(f"Пользователь {user.id} пришел от реферера {referrer_id}")
+                except ValueError:
+                    pass  # Неверный формат, игнорируем
+
+        # Выбираем соответствующее приветственное сообщение
+        if referrer_id:
+            welcome_text = self.config.REFERRAL_WELCOME_MESSAGE
+        else:
+            welcome_text = self.config.WELCOME_MESSAGE
 
         # ОРИГИНАЛЬНЫЕ КНОПКИ: Подписки, Связь, Реферальная система
         keyboard = [
@@ -221,7 +266,103 @@ class PassiveNFTBot:
             [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
+
+    async def confirm_payment_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды подтверждения оплаты и добавления реферала"""
+        user = update.effective_user
+        
+        # Проверяем, есть ли для этого пользователя ожидающий реферер
+        pending_referrer = self.get_pending_referrer(user.id)
+        if pending_referrer:
+            # Добавляем реферала в базу
+            success = self.add_referral(pending_referrer, user.id)
+            if success:
+                # Удаляем запись об ожидающем реферере
+                self.remove_pending_referral(user.id)
+                await update.message.reply_text("✅ **Оплата подтверждена! Реферал успешно добавлен.**", parse_mode='Markdown')
+            else:
+                await update.message.reply_text("❌ **Ошибка при добавлении реферала.**", parse_mode='Markdown')
+        else:
+            await update.message.reply_text("ℹ️ **Для вас нет ожидающих рефереров.**", parse_mode='Markdown')
+
+    def save_pending_referral(self, user_id: int, referrer_id: int):
+        """Сохранение информации о временном рефере"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                from datetime import datetime
+                cursor.execute(
+                    "INSERT OR REPLACE INTO pending_referrals (user_id, referrer_id, created_at) VALUES (?, ?, ?)",
+                    (user_id, referrer_id, datetime.now().isoformat())
+                )
+                conn.commit()
+                logger.info(f"Сохранен временный реферер {referrer_id} для пользователя {user_id}")
+        except Exception as e:
+            logger.error(f"Ошибка сохранения временного реферера: {e}")
+
+    def get_pending_referrer(self, user_id: int):
+        """Получение ожидающего реферера для пользователя"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT referrer_id FROM pending_referrals WHERE user_id = ?",
+                    (user_id,)
+                )
+                result = cursor.fetchone()
+                return result[0] if result else None
+        except Exception as e:
+            logger.error(f"Ошибка получения ожидающего реферера: {e}")
+            return None
+
+    def remove_pending_referral(self, user_id: int):
+        """Удаление записи об ожидающем рефере"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "DELETE FROM pending_referrals WHERE user_id = ?",
+                    (user_id,)
+                )
+                conn.commit()
+                logger.info(f"Удален временный реферер для пользователя {user_id}")
+        except Exception as e:
+            logger.error(f"Ошибка удаления временного реферера: {e}")
+
+    def add_referral(self, referrer_id: int, referred_user_id: int):
+        """Добавление реферала в базу данных"""
+        try:
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Проверяем, что пользователь еще не добавлен как реферал
+                cursor.execute(
+                    "SELECT COUNT(*) FROM referrals WHERE referrer_id = ? AND referral_code = ?",
+                    (referrer_id, str(referred_user_id))
+                )
+                if cursor.fetchone()[0] > 0:
+                    logger.info(f"Реферал {referred_user_id} для {referrer_id} уже существует")
+                    return True  # Уже существует, считаем успехом
+                
+                # Добавляем нового реферала
+                cursor.execute(
+                    "INSERT OR REPLACE INTO referrals (referrer_id, referral_code, total_referrals, total_earnings) VALUES (?, ?, ?, ?)",
+                    (referrer_id, str(referred_user_id), 1, 0.0)
+                )
+                
+                # Обновляем статистику реферера
+                cursor.execute(
+                    "UPDATE referrals SET total_referrals = total_referrals + 1 WHERE referrer_id = ?",
+                    (referrer_id,)
+                )
+                
+                conn.commit()
+                logger.info(f"Добавлен реферал {referred_user_id} для реферера {referrer_id}")
+                return True
+        except Exception as e:
+            logger.error(f"Ошибка добавления реферала: {e}")
+            return False
 
     async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Подписки' - ОРИГИНАЛЬНОЕ описание"""
@@ -243,7 +384,7 @@ class PassiveNFTBot:
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
-            await query.message.edit_text(subscription_text, reply_markup=reply_markup)
+            await query.message.edit_text(subscription_text, reply_markup=reply_markup, parse_mode='Markdown')
         except BadRequest as e:
             if "Message is not modified" in str(e):
                 await query.answer("Подписки уже открыты!")
@@ -267,7 +408,7 @@ class PassiveNFTBot:
             [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(plan_text, reply_markup=reply_markup)
+        await query.message.edit_text(plan_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Оплатить' с обновленной инструкцией"""
@@ -278,10 +419,11 @@ class PassiveNFTBot:
         plan = self.config.SUBSCRIPTION_PLANS[plan_index]
 
         # Обновленная инструкция по оплате с кликабельным адресом
-        payment_text = f"""💰 ОПЛАТА: {plan['price_ton']} TON
-Адрес кошелька: `{self.config.TON_WALLET_ADDRESS}`
-⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
-После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки."""
+        payment_text = f"""**💰 ОПЛАТА: {plan['price_ton']} TON**
+**Адрес кошелька: `{self.config.TON_WALLET_ADDRESS}`**
+**⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.**
+**После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения подписки.**
+**💡 Если вы пришли по реферальной ссылке, используйте команду /confirm_payment после оплаты.**"""
 
         # Кнопка "Назад"
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]]
@@ -319,7 +461,8 @@ class PassiveNFTBot:
         keyboard = [
             [InlineKeyboardButton("🔙 Назад", callback_data="back")],
             [InlineKeyboardButton("🔗 Получить реферальную ссылку", callback_data="get_referral")],
-            [InlineKeyboardButton("📊 Статистика рефералов", callback_data="referral_stats")]]
+            [InlineKeyboardButton("📊 Статистика рефералов", callback_data="referral_stats")]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
             await query.message.edit_text(referral_text, reply_markup=reply_markup, parse_mode='Markdown')
@@ -337,12 +480,12 @@ class PassiveNFTBot:
 
         # Генерация персональной реферальной ссылки
         referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-        referral_link_text = f"Ваша персональная реферальная ссылка:\n\n{referral_link}"
+        referral_link_text = f"**{self.config.REFERRAL_LINK_MESSAGE}**\n\n`{referral_link}`"
 
         # Кнопка "Назад"
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(referral_link_text, reply_markup=reply_markup)
+        await query.message.edit_text(referral_link_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def referral_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик статистики рефералов"""
@@ -354,12 +497,12 @@ class PassiveNFTBot:
         if stats:
             stats_text = self.config.REFERRAL_STATS_MESSAGE.format(referrals_info=stats)
         else:
-            stats_text = "У вас пока нет рефералов."
+            stats_text = "**У вас пока нет рефералов.**"
 
         # Кнопка "Назад"
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(stats_text, reply_markup=reply_markup)
+        await query.message.edit_text(stats_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Назад' - возврат к главному меню"""
@@ -371,21 +514,13 @@ class PassiveNFTBot:
 
         # ОРИГИНАЛЬНЫЕ кнопки главного меню
         keyboard = [
-            [InlineKeyboardButton("Подписки", callback_data="subscription")],
-            [InlineKeyboardButton("Связь", callback_data="contact")],
-            [InlineKeyboardButton("Реферальная система", callback_data="referral")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        # ОРИГИНАЛЬНЫЕ кнопки главного меню с ЭМОДЗИ
-        keyboard = [
             [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
             [InlineKeyboardButton("💬 Связь", callback_data="contact")],
             [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
-            await query.message.edit_text(welcome_text, reply_markup=reply_markup)
+            await query.message.edit_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
         except BadRequest as e:
             if "Message is not modified" not in str(e):
                 raise
@@ -394,11 +529,12 @@ class PassiveNFTBot:
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /help"""
-        help_text = """🤖 PassiveNFT Bot - Справка
+        help_text = f"""🤖 PassiveNFT Bot - Справка
 /start - Начать работу с ботом
 /help - Показать эту справку
+/confirm_payment - Подтвердить оплату и добавить реферала
 /adminserveraa - Админ панель (только для админов)
-💬 Для вопросов: @{manager_username}""".replace("@{manager_username}", f"@{self.config.MANAGER_USERNAME}")
+💬 Для вопросов: @{self.config.MANAGER_USERNAME}"""
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
     async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -496,7 +632,7 @@ class PassiveNFTBot:
                 )
                 count = cursor.fetchone()[0]
                 if count > 0:
-                    return f"Количество рефералов: {count}"
+                    return f"**Количество рефералов: {count}**"
                 return None
         except Exception as e:
             logger.error(f"Ошибка получения статистики рефералов: {e}")
@@ -585,6 +721,7 @@ class PassiveNFTBot:
         logger.info("🚀 Запуск PassiveNFT Bot на Render...")
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
         logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
+        logger.info("✅ Реферальная система включена")
 
         # Очистка webhook перед запуском
         await self.clear_webhook_on_startup()
