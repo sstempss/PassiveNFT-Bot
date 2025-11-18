@@ -130,12 +130,12 @@ class SafeConfig:
         # 2. ОБЩЕЕ ОПИСАНИЕ ПОДПИСОК (Пункт 2.1)
         self.SUBSCRIPTION_DESCRIPTION = "💳 Нажми на интересующую тебя подписку"
 
-        # 3. ТЕКСТ СВЯЗИ (Пункт 3)
-        self.CONTACT_MESSAGE = f"""💬 Если у вас возникли какие-либо трудности с оплатой или есть вопросы на которые здесь нет ответов, нажмите [сюда](https://t.me/{self.MANAGER_USERNAME}) для обращения к менеджеру по вопросам."""
+        # 3. ТЕКСТ СВЯЗИ (Пункт 3) - HTML ССЫЛКИ
+        self.CONTACT_MESSAGE = f"""💬 Если у вас возникли какие-либо трудности с оплатой или есть вопросы на которые здесь нет ответов, нажмите <a href="https://t.me/{self.MANAGER_USERNAME}">сюда</a> для обращения к менеджеру по вопросам."""
 
-        # 4. РЕФЕРАЛЬНАЯ СИСТЕМА - ГЛАВНОЕ МЕНЮ (Пункт 4)
+        # 4. РЕФЕРАЛЬНАЯ СИСТЕМА - ГЛАВНОЕ МЕНЮ (Пункт 4) - HTML ССЫЛКИ
         self.REFERRAL_MESSAGE = f"""👥 Реферальная система предназначена для амбассадоров закрытого проекта PassiveNFT и обычных участников
-🔗 Она состоит из пригласительной ссылки, где владелец ссылки получается 10% с его оплаты подписки, для более точных подробностей свяжитесь с [менеджером](https://t.me/{self.MANAGER_USERNAME})"""
+🔗 Она состоит из пригласительной ссылки, где владелец ссылки получается 10% с его оплаты подписки, для более точных подробностей свяжитесь с <a href="https://t.me/{self.MANAGER_USERNAME}">менеджером</a>"""
 
         # 5. РЕФЕРАЛЬНАЯ ССЫЛКА
         self.REFERRAL_LINK_MESSAGE = "Ваша персональная реферальная ссылка:"
@@ -216,6 +216,7 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.referral_callback, pattern="^referral$"))
             self.application.add_handler(CallbackQueryHandler(self.get_referral_link_callback, pattern="^get_referral$"))
             self.application.add_handler(CallbackQueryHandler(self.referral_stats_callback, pattern="^referral_stats$"))
+            self.application.add_handler(CallbackQueryHandler(self.copy_ton_callback, pattern="^copy_ton_"))
             self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
@@ -422,7 +423,7 @@ class PassiveNFTBot:
         payment_text = f"""💰 ОПЛАТА: {plan['price_ton']} TON
 
 Адрес кошелька:
-{self.config.TON_WALLET_ADDRESS}
+<code>{self.config.TON_WALLET_ADDRESS}</code>
 
 ⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
 
@@ -430,10 +431,13 @@ class PassiveNFTBot:
 
 💡 Если вы пришли по реферальной ссылке, используйте команду /confirm_payment после оплаты."""
 
-        # Кнопка "Назад"
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]]
+        # Кнопки: "Копировать TON адрес" и "Назад"
+        keyboard = [
+            [InlineKeyboardButton("📋 Копировать TON адрес", callback_data=f"copy_ton_{plan_index}")],
+            [InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.edit_text(payment_text, reply_markup=reply_markup)
+        await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
 
     async def contact_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Связь' с ОРИГИНАЛЬНЫМ текстом"""
@@ -447,7 +451,7 @@ class PassiveNFTBot:
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
-            await query.message.edit_text(contact_text, reply_markup=reply_markup)
+            await query.message.edit_text(contact_text, reply_markup=reply_markup, parse_mode='HTML')
         except BadRequest as e:
             if "Message is not modified" in str(e):
                 await query.answer("Контакты уже открыты!")
@@ -470,7 +474,7 @@ class PassiveNFTBot:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         try:
-            await query.message.edit_text(referral_text, reply_markup=reply_markup)
+            await query.message.edit_text(referral_text, reply_markup=reply_markup, parse_mode='HTML')
         except BadRequest as e:
             if "Message is not modified" not in str(e):
                 raise
@@ -508,6 +512,31 @@ class PassiveNFTBot:
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.edit_text(stats_text, reply_markup=reply_markup)
+
+    async def copy_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик копирования TON адреса"""
+        query = update.callback_query
+        await query.answer()
+
+        # Извлекаем plan_index из callback_data
+        plan_index = int(query.data.split('_')[2])
+        plan = self.config.SUBSCRIPTION_PLANS[plan_index]
+        
+        # Показываем сообщение с инструкцией по копированию
+        copy_instruction = f"""📋 Копируйте TON адрес для оплаты подписки {plan['name']}:
+
+<code>{self.config.TON_WALLET_ADDRESS}</code>
+
+💡 Для копирования:
+• Нажмите на адрес выше
+• Скопируйте и отправьте {plan['price_ton']} TON
+
+После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME}"""
+
+        # Кнопка "Назад к плану"
+        keyboard = [[InlineKeyboardButton("🔙 Назад к плану", callback_data=f"payment_{plan_index}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.edit_text(copy_instruction, reply_markup=reply_markup, parse_mode='HTML')
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Назад' - возврат к главному меню"""
