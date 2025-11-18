@@ -547,7 +547,7 @@ class PassiveNFTBot:
             # Кнопка "ОПЛАТИТЬ" и "Назад"
             keyboard = [
                 [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"payment_{plan_index}")],
-                [InlineKeyboardButton("🔙 Назад", callback_data="select_ton")]
+                [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(plan_text, reply_markup=reply_markup)
@@ -608,7 +608,7 @@ class PassiveNFTBot:
 
             # Кнопка "Назад"
             keyboard = [
-                [InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]
+                [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
@@ -639,7 +639,7 @@ class PassiveNFTBot:
                 [InlineKeyboardButton("⭐️ ВХОД 50 ЗВЕЗДОЧЕК", callback_data=f"star_plan_50_{plan_index}")],
                 [InlineKeyboardButton("⭐️ ВХОД 75 ЗВЕЗДОЧЕК", callback_data=f"star_plan_75_{plan_index}")],
                 [InlineKeyboardButton("⭐️ ВХОД 100 ЗВЕЗДОЧЕК", callback_data=f"star_plan_100_{plan_index}")],
-                [InlineKeyboardButton("🔙 Назад", callback_data=f"subscription_plan_{plan_index}")]
+                [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(activity_text, reply_markup=reply_markup)
