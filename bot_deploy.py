@@ -261,7 +261,7 @@ class SafeConfig:
 # Инициализация конфигурации
 try:
     if os.path.exists('config_deploy.py'):
-        from config_deploy import config
+        from config_deploy_new import config
         logger.info("Конфигурация загружена из config_deploy.py")
     else:
         config = SafeConfig()
