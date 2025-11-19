@@ -1435,7 +1435,7 @@ class PassiveNFTBot:
             logger.info("✅ Бот начал получать обновления")
             
             # Ожидание завершения
-            await self.application.idle()
+            await self.application.updater.idle()
             
         except KeyboardInterrupt:
             logger.info("🛑 Получен сигнал остановки")
