@@ -258,10 +258,13 @@ class SafeConfig:
         """Получение списка админов по username"""
         return ["pro.player.egor", "admin"]
 
-# Инициализация конфигурации
+# Инициализация конфигурации - ИСПРАВЛЕНО: ИМПОРТ ИЗ config_deploy_new
 try:
-    if os.path.exists('config_deploy.py'):
+    if os.path.exists('config_deploy_new.py'):
         from config_deploy_new import config
+        logger.info("Конфигурация загружена из config_deploy_new.py")
+    elif os.path.exists('config_deploy.py'):
+        from config_deploy import config
         logger.info("Конфигурация загружена из config_deploy.py")
     else:
         config = SafeConfig()
@@ -1434,8 +1437,10 @@ class PassiveNFTBot:
             )
             logger.info("✅ Бот начал получать обновления")
             
-            # Ожидание завершения
-            await self.application.updater.idle()
+            # ИСПРАВЛЕНИЕ: Заменили await self.application.idle() на бесконечный цикл ожидания
+            logger.info("✅ Бот работает в режиме ожидания...")
+            while True:
+                await asyncio.sleep(1)
             
         except KeyboardInterrupt:
             logger.info("🛑 Получен сигнал остановки")
