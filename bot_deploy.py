@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PassiveNFT Bot - ВЕРСИЯ С АКТИВНЫМИ ПОДПИСКАМИ (за звездочки) - ИСПРАВЛЕННАЯ ВЕРСИЯ
+PassiveNFT Bot - ВЕРСИЯ С АКТИВНЫМИ ПОДПИСКАМИ (за звездочки) - ИСПРАВЛЕННАЯ ВЕРСИЯЯ
 """
 import asyncio
 import logging
