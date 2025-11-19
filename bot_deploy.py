@@ -562,7 +562,7 @@ class PassiveNFTBot:
 
             # Кнопка "ОПЛАТИТЬ" и "Назад"
             keyboard = [
-                [InlineKeyboardButton("💳 ОПЛАТИТЬ", callback_data=f"payment_{plan_index}")],
+                [InlineKeyboardButton(f"💳 ОПЛАТИТЬ: {plan['price_ton']} TON", callback_data=f"payment_{plan_index}")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -718,7 +718,7 @@ class PassiveNFTBot:
             keyboard = []
             for i, plan in enumerate(self.config.SUBSCRIPTION_PLANS):
                 # ИСПРАВЛЕНО: показываем прайс прямо в названии кнопки
-                button_text = f"{plan['name']} - {plan['price_ton']} TON"
+                button_text = f"{plan['price_ton']} TON"
                 callback_data = f"ton_subscription_plan_{i}"
                 keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
 
