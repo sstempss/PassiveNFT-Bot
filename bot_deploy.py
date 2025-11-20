@@ -840,7 +840,7 @@ class PassiveNFTBot:
             # ИСПРАВЛЕННЫЕ кнопки для оплаты
             keyboard = [
                 [InlineKeyboardButton("💰 Оплатить TON", callback_data=f"copy_stars_ton_{stars}")],
-                [InlineKeyboardButton("⭐ Оплатить звездочками", callback_data=f"stars_payment_stars_{stars}")],
+                [InlineKeyboardButton("⭐ Оплатить звездочками", url=f"https://t.me/{self.config.STARS_USERNAME}")],
                 [InlineKeyboardButton("👤 Менеджер", url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
                 [InlineKeyboardButton("🔙 Назад", callback_data=f"star_plan_{stars}")]
             ]
