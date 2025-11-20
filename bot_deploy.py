@@ -41,6 +41,19 @@ class Database:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                
+                # Создаем таблицу для пользователей (для корректной работы broadcast)
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id INTEGER PRIMARY KEY,
+                        username TEXT,
+                        first_name TEXT,
+                        last_name TEXT,
+                        joined_at TEXT NOT NULL,
+                        is_active INTEGER DEFAULT 1
+                    )
+                ''')
+                
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS subscriptions (
                         user_id INTEGER PRIMARY KEY,
@@ -165,7 +178,8 @@ class SafeConfig:
 
 ❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам."""
 
-        self.REFERRAL_LINK_MESSAGE = "Ваша персональная реферальная ссылка:"
+        # ИСПРАВЛЕННОЕ сообщение для реферальной ссылки
+        self.REFERRAL_LINK_MESSAGE = "🔗 **Ваша персональная реферальная ссылка:**\n\nПриглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!"
         
         self.REFERRAL_STATS_MESSAGE = """Статистика ваших рефералов:
 {referrals_info}"""
@@ -328,6 +342,7 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.star_subscription_plan_callback, pattern="^star_plan_"))
             self.application.add_handler(CallbackQueryHandler(self.stars_payment_callback, pattern="^stars_payment_"))
             self.application.add_handler(CallbackQueryHandler(self.copy_stars_ton_callback, pattern="^copy_stars_ton_"))
+            self.application.add_handler(CallbackQueryHandler(self.stars_payment_stars_callback, pattern="^stars_payment_stars_"))
             
             # Существующие обработчики
             self.application.add_handler(CallbackQueryHandler(self.contact_callback, pattern="^contact$"))
@@ -359,6 +374,9 @@ class PassiveNFTBot:
         try:
             user = update.effective_user
             args = context.args
+            
+            # Добавляем пользователя в базу данных
+            self.add_user_to_database(user)
             
             # Проверяем, есть ли реферальный параметр
             referrer_id = None
@@ -393,6 +411,30 @@ class PassiveNFTBot:
             logger.error(f"❌ Ошибка в start_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+
+    def add_user_to_database(self, user):
+        """Добавление пользователя в базу данных"""
+        try:
+            from datetime import datetime
+            with sqlite3.connect(self.database.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """INSERT OR REPLACE INTO users 
+                       (user_id, username, first_name, last_name, joined_at, is_active) 
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        user.id,
+                        user.username,
+                        user.first_name,
+                        user.last_name,
+                        datetime.now().isoformat(),
+                        1
+                    )
+                )
+                conn.commit()
+                logger.info(f"Пользователь {user.id} добавлен в базу данных")
+        except Exception as e:
+            logger.error(f"Ошибка добавления пользователя в базу: {e}")
 
     async def confirm_payment_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды подтверждения оплаты и добавления реферала"""
@@ -784,20 +826,22 @@ class PassiveNFTBot:
                 await query.answer("❌ Ошибка: план не найден")
                 return
 
-            # Формируем сообщение об оплате с кликабельным TON адресом
+            # ИСПРАВЛЕННОЕ сообщение с двумя кнопками оплаты
             payment_text = f"""💰 ОПЛАТА: ~{star_plan['ton_price']} TON (эквивалентно ~{stars} звездам)
 
- Адрес кошелька:
-<code>{self.config.TON_WALLET_ADDRESS}</code>
+для оплаты в TON нажмите кнопку "Оплатить TON" и отправьте сумму указанную выше (при нажатии на эту кнопку, у пользователя копируется мой адрес тон кошелька)
 
-для оплаты ЗВЕЗДОЧКАМИ перейдите <a href="https://t.me/{self.config.STARS_USERNAME}">сюда</a> и отправьте подарком стоимость подписки + оплата комиссии
+для оплаты ЗВЕЗДОЧКАМИ нажмите кнопку "Оплатить звездочками" и отправьте подарком стоимость подписки + оплата комиссии (при нажатии этой кнопки пользователя перекидывает на тг @{self.config.STARS_USERNAME})
 
-после оплаты обратитесь к менеджеру <a href="https://t.me/{self.config.MANAGER_USERNAME}">здесь</a> для подтверждения оплаты и для получения ссылки в закрытый ТГК.
+после оплаты обратитесь к менеджеру [здесь](https://t.me/{self.config.MANAGER_USERNAME}) для подтверждения оплаты и для получения ссылки в закрытый ТГК.
 
-⚠️ ВАЖНО: Для копирования адреса кошелька нажмите на адрес выше."""
+⚠️ ВАЖНО: Для копирования адреса кошелька нажмите на кнопку "Оплатить TON" """
 
-            # Кнопка "Назад к плану"
+            # Кнопки для оплаты
             keyboard = [
+                [InlineKeyboardButton("💰 Оплатить TON", callback_data=f"copy_stars_ton_{stars}")],
+                [InlineKeyboardButton("⭐ Оплатить звездочками", callback_data=f"stars_payment_stars_{stars}")],
+                [InlineKeyboardButton("👤 Менеджер", url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
                 [InlineKeyboardButton("🔙 Назад", callback_data=f"star_plan_{stars}")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -849,6 +893,40 @@ class PassiveNFTBot:
             logger.info(f"✅ Инструкция по копированию TON для {stars} звездочек отправлена")
         except Exception as e:
             logger.error(f"❌ Ошибка в copy_stars_ton_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def stars_payment_stars_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик кнопки 'Оплатить звездочками'"""
+        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: stars_payment_stars callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Извлекаем количество звездочек
+            parts = query.data.split('_')
+            stars = int(parts[3])
+
+            # Формируем сообщение с инструкцией для оплаты звездочками
+            payment_stars_text = f"""⭐ **ОПЛАТА ЗВЕЗДОЧКАМИ: {stars} звезд**
+
+Для оплаты звездочками:
+
+1️⃣ Перейдите в бота @{self.config.STARS_USERNAME}
+2️⃣ Отправьте подарком стоимость подписки + оплата комиссии
+3️⃣ После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения оплаты и получения ссылки в закрытый ТГК.
+
+💡 **Важно:** Пришлите скриншот оплаты менеджеру для быстрого подтверждения."""
+
+            # Кнопка "Назад к оплате"
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад к оплате", callback_data=f"stars_payment_{stars}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(payment_stars_text, reply_markup=reply_markup, parse_mode='HTML')
+            logger.info(f"✅ Инструкция по оплате звездочками {stars} отправлена пользователю {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в stars_payment_stars_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
@@ -1203,7 +1281,8 @@ class PassiveNFTBot:
         try:
             with sqlite3.connect(self.database.db_path) as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT DISTINCT user_id FROM subscriptions")
+                # ИСПРАВЛЕНО: теперь используем таблицу users, а не subscriptions
+                cursor.execute("SELECT DISTINCT user_id FROM users WHERE is_active = 1")
                 users = cursor.fetchall()
                 return [{'user_id': user[0]} for user in users]
         except Exception as e:
