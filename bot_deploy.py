@@ -859,10 +859,10 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            # ИСПРАВЛЕНО: правильное извлечение количества звездочек из callback_data
+            # ИСПРАВЛЕНО: правильное извлечение количества звездочек из callback_data "copy_stars_ton_25"
             parts = query.data.split('_')
-            if len(parts) >= 2:
-                stars = int(parts[1])  # parts[1] содержит число звездочек
+            if len(parts) >= 4:
+                stars = int(parts[3])  # parts[3] содержит число звездочек
             else:
                 await query.answer("❌ Ошибка: неверный формат данных")
                 return
@@ -893,9 +893,8 @@ class PassiveNFTBot:
 
 🔗 Связаться с менеджером: https://t.me/{self.config.MANAGER_USERNAME}"""
 
-            # Кнопка копирования адреса и связь с менеджером
+            # Кнопки для TON оплаты
             keyboard = [
-                [InlineKeyboardButton("📋 Скопировать адрес", callback_data="copy_address")],
                 [InlineKeyboardButton("💰 Открыть TON кошелек", url=f"ton://transfer?amount={star_plan['ton_price']}&address={self.config.TON_WALLET_ADDRESS}")],
                 [InlineKeyboardButton("👤 Связь с менеджером", url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
                 [InlineKeyboardButton("🔙 Назад", callback_data=f"stars_payment_{stars}")]
