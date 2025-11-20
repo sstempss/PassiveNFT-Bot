@@ -132,7 +132,8 @@ class SafeConfig:
         self.TON_WALLET_ADDRESS = TON_WALLET_ADDRESS
         self.MANAGER_USERNAME = MANAGER_USERNAME
         self.BOT_USERNAME = BOT_USERNAME
-        self.STARS_USERNAME = 'alvatas'
+        # ИСПРАВЛЕНО: STARS_USERNAME - pingvinchik_liza
+        self.STARS_USERNAME = 'pingvinchik_liza'
         
         # ИСПРАВЛЕННЫЕ СООБЩЕНИЯ ДЛЯ РАБОТЫ БОТА (ВИЗУАЛЬНЫЕ КОРРЕКТИРОВКИ ПОЛЬЗОВАТЕЛЯ)
         self.WELCOME_MESSAGE = """🎉 welcome to the PassiveNFT 🎉
