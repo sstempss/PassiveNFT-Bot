@@ -859,10 +859,10 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            # ИСПРАВЛЕНО: правильное извлечение количества звездочек
+            # ИСПРАВЛЕНО: правильное извлечение количества звездочек из callback_data
             parts = query.data.split('_')
-            if len(parts) >= 4:
-                stars = int(parts[3])
+            if len(parts) >= 2:
+                stars = int(parts[1])  # parts[1] содержит число звездочек
             else:
                 await query.answer("❌ Ошибка: неверный формат данных")
                 return
@@ -915,10 +915,10 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            # ИСПРАВЛЕНО: правильное извлечение количества звездочек
+            # ИСПРАВЛЕНО: правильное извлечение количества звездочек из callback_data
             parts = query.data.split('_')
-            if len(parts) >= 4:
-                stars = int(parts[3])
+            if len(parts) >= 2:
+                stars = int(parts[1])  # parts[1] содержит число звездочек
             else:
                 await query.answer("❌ Ошибка: неверный формат данных")
                 return
