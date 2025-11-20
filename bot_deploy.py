@@ -98,8 +98,8 @@ class SafeConfig:
         self.MANAGER_USERNAME = self._get_env_var('MANAGER_USERNAME', 'num6er9')
         self.BOT_USERNAME = self._get_env_var('BOT_USERNAME', 'PassiveNFT')
         
-        # Настройки для активных подписок
-        self.STARS_USERNAME = self._get_env_var('STARS_USERNAME', 'alvatas')
+        # ИСПРАВЛЕНО: STARS_USERNAME - pingvinchik_liza
+        self.STARS_USERNAME = self._get_env_var('STARS_USERNAME', 'pingvinchik_liza')
 
         # Настройки подписок - БЕЗ ЖИРНОГО ТЕКСТА
         self.SUBSCRIPTION_PLANS = [
@@ -837,7 +837,7 @@ class PassiveNFTBot:
 
 ⚠️ ВАЖНО: Для копирования адреса кошелька нажмите на кнопку "Оплатить TON" """
 
-            # Кнопки для оплаты
+            # ИСПРАВЛЕННЫЕ кнопки для оплаты
             keyboard = [
                 [InlineKeyboardButton("💰 Оплатить TON", callback_data=f"copy_stars_ton_{stars}")],
                 [InlineKeyboardButton("⭐ Оплатить звездочками", callback_data=f"stars_payment_stars_{stars}")],
@@ -853,16 +853,19 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def copy_stars_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик копирования TON адреса для звездочек"""
+        """ИСПРАВЛЕННЫЙ обработчик кнопки "Оплатить TON" - копирование адреса"""
         logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: copy_stars_ton callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # Извлекаем количество звездочек и индекс плана
+            # ИСПРАВЛЕНО: правильное извлечение количества звездочек
             parts = query.data.split('_')
-            stars = int(parts[3])
-            plan_index = int(parts[4])
+            if len(parts) >= 4:
+                stars = int(parts[3])
+            else:
+                await query.answer("❌ Ошибка: неверный формат данных")
+                return
 
             # Находим соответствующий план звездочек
             star_plan = None
@@ -875,56 +878,70 @@ class PassiveNFTBot:
                 await query.answer("❌ Ошибка: план не найден")
                 return
 
-            # Показываем сообщение с инструкцией по копированию
-            copy_instruction = f"""📋 Копируйте TON адрес для оплаты активной подписки на {stars} звездочек:
+            # ИСПРАВЛЕННОЕ сообщение с инструкциями для TON оплаты
+            payment_text = f"""💰 ОПЛАТА ЧЕРЕЗ TON - {stars} ЗВЕЗД (~{star_plan['ton_price']} TON)
 
+📍 Адрес TON кошелька:
 <code>{self.config.TON_WALLET_ADDRESS}</code>
 
-💡 Для копирования:
-• Нажмите на адрес выше
-• Скопируйте и отправьте {star_plan['ton_price']} TON
+✅ При нажатии кнопка выше скопирует адрес в буфер обмена
 
-После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения."""
+💰 Отправьте: ~{star_plan['ton_price']} TON (эквивалентно ~{stars} звездам)
 
-            # Кнопка "Назад к оплате"
-            keyboard = [[InlineKeyboardButton("🔙 Назад к оплате", callback_data=f"stars_payment_{stars}_{plan_index}")]]
+⏰ После оплаты обратитесь к менеджеру для подтверждения:
+👤 @{self.config.MANAGER_USERNAME}
+
+🔗 Связаться с менеджером: https://t.me/{self.config.MANAGER_USERNAME}"""
+
+            # Кнопка копирования адреса и связь с менеджером
+            keyboard = [
+                [InlineKeyboardButton("📋 Скопировать адрес", callback_data="copy_address")],
+                [InlineKeyboardButton("💰 Открыть TON кошелек", url=f"ton://transfer?amount={star_plan['ton_price']}&address={self.config.TON_WALLET_ADDRESS}")],
+                [InlineKeyboardButton("👤 Связь с менеджером", url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data=f"stars_payment_{stars}")]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text(copy_instruction, reply_markup=reply_markup, parse_mode='HTML')
-            logger.info(f"✅ Инструкция по копированию TON для {stars} звездочек отправлена")
+            await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
+            logger.info(f"✅ Оплата через TON {stars} показана пользователю {update.effective_user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в copy_stars_ton_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def stars_payment_stars_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Оплатить звездочками'"""
+        """ИСПРАВЛЕННЫЙ обработчик кнопки "Оплатить звездочками" - редирект на менеджера"""
         logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: stars_payment_stars callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # Извлекаем количество звездочек
+            # ИСПРАВЛЕНО: правильное извлечение количества звездочек
             parts = query.data.split('_')
-            stars = int(parts[3])
+            if len(parts) >= 4:
+                stars = int(parts[3])
+            else:
+                await query.answer("❌ Ошибка: неверный формат данных")
+                return
 
-            # Формируем сообщение с инструкцией для оплаты звездочками
-            payment_stars_text = f"""⭐ **ОПЛАТА ЗВЕЗДОЧКАМИ: {stars} звезд**
+            # ИСПРАВЛЕННОЕ сообщение с редиректом на pingvinchik_liza
+            payment_text = f"""⭐️ ОПЛАТА ЧЕРЕЗ ЗВЕЗДОЧКИ - {stars} ЗВЕЗД
 
-Для оплаты звездочками:
+💳 Для оплаты перейдите к @{self.config.STARS_USERNAME} и отправьте подарком стоимость подписки ({stars} звезд) + оплата комиссии.
 
-1️⃣ Перейдите в бота @{self.config.STARS_USERNAME}
-2️⃣ Отправьте подарком стоимость подписки + оплата комиссии
-3️⃣ После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME} для подтверждения оплаты и получения ссылки в закрытый ТГК.
+⏰ После отправки обратитесь к менеджеру для подтверждения:
+👤 @{self.config.MANAGER_USERNAME}
 
-💡 **Важно:** Пришлите скриншот оплаты менеджеру для быстрого подтверждения."""
+🔗 Переход к @{self.config.STARS_USERNAME}..."""
 
-            # Кнопка "Назад к оплате"
+            # Кнопка перехода к менеджеру для оплаты звездочками
             keyboard = [
-                [InlineKeyboardButton("🔙 Назад к оплате", callback_data=f"stars_payment_{stars}")]
+                [InlineKeyboardButton(f"💎 Перейти к @{self.config.STARS_USERNAME}", url=f"https://t.me/{self.config.STARS_USERNAME}")],
+                [InlineKeyboardButton("👤 Связь с менеджером", url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data=f"stars_payment_{stars}")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text(payment_stars_text, reply_markup=reply_markup, parse_mode='HTML')
-            logger.info(f"✅ Инструкция по оплате звездочками {stars} отправлена пользователю {update.effective_user.id}")
+            await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
+            logger.info(f"✅ Оплата через звездочки {stars} для @{self.config.STARS_USERNAME} показана пользователю {update.effective_user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в stars_payment_stars_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1047,26 +1064,11 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            # Извлекаем plan_index из callback_data
-            plan_index = int(query.data.split('_')[2])
-            plan = self.config.SUBSCRIPTION_PLANS[plan_index]
-            
-            # Показываем сообщение с инструкцией по копированию
-            copy_instruction = f"""📋 Копируйте TON адрес для оплаты подписки {plan['name']}:
-
-<code>{self.config.TON_WALLET_ADDRESS}</code>
-
-💡 Для копирования:
-• Нажмите на адрес выше
-• Скопируйте и отправьте {plan['price_ton']} TON
-
-После оплаты обратитесь к менеджеру @{self.config.MANAGER_USERNAME}"""
-
-            # Кнопка "Назад к плану"
-            keyboard = [[InlineKeyboardButton("🔙 Назад к плану", callback_data=f"payment_{plan_index}")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text(copy_instruction, reply_markup=reply_markup, parse_mode='HTML')
-            logger.info(f"✅ Инструкция по копированию TON отправлена для плана {plan_index}")
+            await query.message.edit_text(
+                f"✅ Адрес кошелька скопирован!\n\n`{self.config.TON_WALLET_ADDRESS}`\n\nОтправьте указанную сумму TON.",
+                parse_mode='Markdown'
+            )
+            logger.info(f"✅ Адрес TON скопирован для пользователя {update.effective_user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в copy_ton_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
