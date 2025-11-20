@@ -18,7 +18,7 @@ class Config:
         # Настройки кошельков и менеджеров
         self.TON_WALLET_ADDRESS = os.getenv('TON_WALLET_ADDRESS', 'UQAij8pQ3HhdBn3lw6n9Iy2toOH9OMcBuL8yoSXTNpLJdfZJ')
         self.MANAGER_USERNAME = os.getenv('MANAGER_USERNAME', 'num6er9')
-        self.BOT_USERNAME = os.getenv('BOT_USERNAME', 'PassiveNFT')
+        self.BOT_USERNAME = os.getenv('BOT_USERNAME', 'passivenft_bot')
         
         # ИСПРАВЛЕНО: STARS_USERNAME для оплаты звездочками
         self.STARS_USERNAME = os.getenv('STARS_USERNAME', 'pingvinchik_liza')
