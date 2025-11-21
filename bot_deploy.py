@@ -54,7 +54,7 @@ class SafeConfig:
         # Настройки TON кошелька
         self.TON_WALLET_ADDRESS = self._get_env_var('TON_WALLET_ADDRESS', 'UQAij8pQ3HhdBn3lw6n9Iy2toOH9OMcBuL8yoSXTNpLJdfZJ')
         self.MANAGER_USERNAME = self._get_env_var('MANAGER_USERNAME', 'num6er9')
-        self.BOT_USERNAME = self._get_env_var('BOT_USERNAME', 'PassiveNFT')
+        self.BOT_USERNAME = self._get_env_var('BOT_USERNAME', 'passivenft_bot')
         
         # ИСПРАВЛЕНО: STARS_USERNAME - pingvinchik_liza
         self.STARS_USERNAME = self._get_env_var('STARS_USERNAME', 'pingvinchik_liza')
