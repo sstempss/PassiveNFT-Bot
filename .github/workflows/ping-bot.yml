@@ -1,17 +1,16 @@
-name: PassiveNFT Bot Pinger
+name: Bot Pinger Fixed
 
 on:
   schedule:
-    - cron: "*/14 * * * *"
-  workflow_dispatch:
-
+    # Каждые 10 минут (безопаснее чем 14)
+    - cron: "*/10 * * * *"
+  
 jobs:
   ping-bot:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Ping PassiveNFT Bot
-      run: |
-        echo "Пинг в $(date)"
-        curl -s -o /dev/null -w "HTTP Status: %{http_code}" https://passivenft-bot.onrender.com
-        echo "Пинг отправлен успешно"
+      - name: Ping Bot
+        run: |
+          echo "Пинг отправлен в $(date)"
+          curl -s -w "HTTP Status: %{http_code}" https://passivenft-bot.onrender.com
+          echo "Пинг завершен в $(date)"
