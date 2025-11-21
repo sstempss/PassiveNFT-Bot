@@ -1,5 +1,5 @@
 # Зависимости для PassiveNFT Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ
-python-telegram-bot==20.7
+python-telegram-bot>=21.0
 aiohttp==3.9.1
 sqlalchemy
 aiosqlite
