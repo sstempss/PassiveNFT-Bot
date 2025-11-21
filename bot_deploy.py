@@ -326,11 +326,17 @@ class PassiveNFTBot:
             logger.warning(f"⚠️ Ошибка при очистке webhook: {e}")
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /start с обработкой реферальных параметров"""
+        """Исправленный обработчик команды /start с улучшенной обработкой реферальных параметров"""
         logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /start от пользователя {update.effective_user.id}")
+        
         try:
             user = update.effective_user
             args = context.args
+            
+            # Подробное логирование параметров
+            logger.info(f"📋 Параметры команды: {args}")
+            logger.info(f"📋 Тип args: {type(args)}")
+            logger.info(f"📋 Длина args: {len(args) if args else 0}")
             
             # Добавляем пользователя в базу данных
             referral_code = await self.database.get_or_create_user(
@@ -339,27 +345,47 @@ class PassiveNFTBot:
                 user.first_name or "", 
                 user.last_name or ""
             )
+            logger.info(f"✅ Пользователь {user.id} создан/найден в базе данных, реферальный код: {referral_code}")
             
-            # Проверяем, есть ли реферальный параметр
+            # ОБРАБОТКА РЕФЕРАЛЬНОГО ПАРАМЕТРА
             referrer_id = None
             if args and len(args) > 0:
                 arg = args[0]
+                logger.info(f"🔍 Анализ первого параметра: '{arg}'")
+                
                 if arg.startswith('ref_'):
+                    logger.info(f"✅ Параметр начинается с 'ref_', извлекаем ID...")
                     try:
                         referrer_id = int(arg[4:])  # Убираем "ref_" и получаем ID
+                        logger.info(f"📊 Извлеченный referrer_id: {referrer_id}")
+                        
                         if referrer_id != user.id:  # Нельзя быть реферером самому себе
-                            # Сохраняем информацию о рефере временно
+                            logger.info(f"💾 Сохраняем временного реферера: {referrer_id} для пользователя {user.id}")
                             await self.database.save_pending_referral(user.id, referrer_id)
-                            logger.info(f"Пользователь {user.id} пришел от реферера {referrer_id}")
-                    except ValueError:
-                        pass  # Неверный формат, игнорируем
-
+                            logger.info(f"✅ Реферер {referrer_id} сохранен для пользователя {user.id}")
+                        else:
+                            logger.warning(f"⚠️ Пользователь {user.id} пытается быть реферером самому себе")
+                    except ValueError as e:
+                        logger.error(f"❌ Ошибка преобразования referrer_id: {e}")
+                else:
+                    logger.info(f"❌ Параметр '{arg}' не начинается с 'ref_'")
+            else:
+                logger.info("📋 Параметры отсутствуют, реферальный параметр не передан")
+            
+            # Подробное логирование результата
+            if referrer_id:
+                logger.info(f"🎉 Пользователь {user.id} пришел от реферера {referrer_id}")
+            else:
+                logger.info(f"👤 Пользователь {user.id} пришел без реферального параметра")
+            
             # Выбираем соответствующее приветственное сообщение
             if referrer_id:
                 welcome_text = self.config.REFERRAL_WELCOME_MESSAGE
+                logger.info(f"📝 Используется реферальное приветственное сообщение")
             else:
                 welcome_text = self.config.WELCOME_MESSAGE
-
+                logger.info(f"📝 Используется обычное приветственное сообщение")
+            
             # ОРИГИНАЛЬНЫЕ КНОПКИ: Подписки, Связь, Реферальная система
             keyboard = [
                 [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
@@ -367,8 +393,10 @@ class PassiveNFTBot:
                 [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
+            
             await update.message.reply_text(welcome_text, reply_markup=reply_markup)
             logger.info(f"✅ /start выполнен успешно для пользователя {user.id}")
+            
         except Exception as e:
             logger.error(f"❌ Ошибка в start_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
