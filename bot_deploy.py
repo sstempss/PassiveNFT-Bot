@@ -304,6 +304,7 @@ class PassiveNFTBot:
             self.application.add_handler(CommandHandler("broadcast", self.broadcast_command))
             
             # Команды для работы с каналами
+            self.application.add_handler(CommandHandler("channels", self.channels_command))
             self.application.add_handler(CommandHandler("channel_info", self.get_channel_info_command))
             self.application.add_handler(CommandHandler("get_channel_id", self.get_channel_id_command))
             
@@ -1047,6 +1048,28 @@ class PassiveNFTBot:
 3. Полученный ID вставьте в CHANNEL_MAPPINGS
 """
         await update.message.reply_text(info_text, parse_mode='Markdown')
+
+    async def channels_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Показать доступные каналы пользователю"""
+        channels_text = """
+📋 **ДОСТУПНЫЕ КАНАЛЫ**
+
+🔹 **Канал на 150 человек**
+   💰 1.50 TON
+
+🔹 **Канал на 100 человек** 
+   💰 1.20 TON
+
+🔹 **Канал на 50 человек**
+   💰 0.80 TON
+
+💡 Для доступа к каналу используйте команду /start
+   и выберите подходящий план подписки.
+
+⭐️ **Звездочки:** 25, 50, 75 или 100 звезд
+💰 **TON:** различные планы подписок
+"""
+        await update.message.reply_text(channels_text, parse_mode='Markdown')
 
     async def get_channel_id_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Получить ID канала где выполняется команда"""
