@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PassiveNFT Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ С ASYNC DATABASE
-ИСПРАВЛЕНИЯ:
-- Решена проблема зависания бота через 20-30 минут
-- Миграция с sqlite3 на aiosqlite для неблокирующих операций
-- Все вызовы базы данных теперь асинхронные
-- Сохранена реферальная система и функционал подписок
+PassiveNFT Bot - ВЕРСИЯ С АКТИВНЫМИ ПОДПИСКАМИ (за звездочки) - ИСПРАВЛЕННАЯ ВЕРСИЯЯ
+ИСПРАВЛЕНИЯ РЕФЕРАЛЬНОЙ СИСТЕМЫ:
+- Устранено дублирование в функции add_referral
+- Добавлена таблица pending_referrals в базу данных
+- Реализована система начисления комиссий реферерам (10%)
+- Исправлены типы подписок для корректной работы статистики
+- Улучшена функция get_user_referral_stats с подробной статистикой
+- Добавлены функции calculate_commission и add_referral_earnings
+- Исправлена статистика подписок для админов
+- ИСПРАВЛЕНЫ ЭМОДЗИ В F-СТРОКАХ (SyntaxError)
+- ДОБАВЛЕНЫ КОМАНДЫ /channel_info, /get_channel_id, /testcmd
 """
 import asyncio
 import logging
+import sqlite3
 import sys
 import traceback
-import time
 from pathlib import Path
 from typing import Optional
 
@@ -26,7 +31,7 @@ import os
 import aiohttp
 from aiohttp import web
 
-# ИМПОРТ АСИНХРОННОГО МЕНЕДЖЕРА БАЗЫ ДАННЫХ
+# Импортируем нашу асинхронную базу данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
 from database_async import AsyncDatabaseManager
 
 # Настройка логирования
@@ -39,12 +44,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Удаляем класс Database, используем DatabaseManager из database.py
+
 class SafeConfig:
-    """Безопасная конфигурация бота - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
+    """Безопасная конфигурация бота с активными подписками - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
     def __init__(self):
         # Основные настройки
         self.BOT_TOKEN = self._get_env_var('BOT_TOKEN', '8530441136:AAHto3A4Zqa5FnGG01cxL6SvU3jW8_Ai0iI')
-        self.ADMIN_USER_IDS = [8387394503, 2112739781]  # pro.player.egor
+        self.ADMIN_USER_IDS = [8387394503, 2112739781] # pro.player.egor
 
         # Настройки TON кошелька
         self.TON_WALLET_ADDRESS = self._get_env_var('TON_WALLET_ADDRESS', 'UQAij8pQ3HhdBn3lw6n9Iy2toOH9OMcBuL8yoSXTNpLJdfZJ')
@@ -54,12 +61,21 @@ class SafeConfig:
         # ИСПРАВЛЕНО: STARS_USERNAME - pingvinchik_liza
         self.STARS_USERNAME = self._get_env_var('STARS_USERNAME', 'pingvinchik_liza')
 
-        # Настройки подписок
+        # ИСПРАВЛЕНО: MAPPING каналов для Stars платежей (ЗАМЕНИТЕ НА РЕАЛЬНЫЕ ID)
+        self.CHANNEL_MAPPINGS = {
+            25: -1001234567891,  # 25 звезд -> ID канала 1
+            50: -1001234567892,  # 50 звезд -> ID канала 2  
+            75: -1001234567893,  # 75 звезд -> ID канала 3
+            100: -1001234567894, # 100 звезд -> ID канала 4
+            150: -1001234567895, # 150 звезд -> ID канала 5
+            200: -1001234567896, # 200 звезд -> ID канала 6
+            250: -1001234567897  # 250 звезд -> ID канала 7
+        }
+
+        # Настройки подписок - БЕЗ ЖИРНОГО ТЕКСТА
         self.SUBSCRIPTION_PLANS = [
             {
-                "id": 0,
                 "name": "на 150 человек",
-                "subscription_type": "150_people",
                 "description": """🖼️ 5 NFT в ДЕНЬ, 4 гифта в ДЕНЬ 🖼️
                 
 📅 150 NFT в МЕСЯЦ, 120 гифтов в МЕСЯЦ
@@ -72,9 +88,7 @@ class SafeConfig:
                 "price_ton": 4
             },
             {
-                "id": 1,
                 "name": "на 100 человек",
-                "subscription_type": "100_people", 
                 "description": """🖼️ 6 NFT в день, 4 гифта в день 🖼️
                 
 📅 180 NFT в месяц, 120 гифтов в месяц
@@ -89,9 +103,7 @@ class SafeConfig:
                 "price_ton": 7
             },
             {
-                "id": 2,
                 "name": "на 50 человек",
-                "subscription_type": "50_people",
                 "description": """🖼️ 7 NFT в день, 4 гифта в день 🖼️
                 
 📅 210 NFT в месяц, 120 гифтов в месяц
@@ -107,7 +119,7 @@ class SafeConfig:
             }
         ]
 
-        # Тексты сообщений
+        # ИСПРАВЛЕННЫЙ ТЕКСТ БЕЗ ЖИРНОГО ФОРМАТИРОВАНИЯ И ЗВЕЗДОЧЕК
         self.WELCOME_MESSAGE = """🎉 welcome to the PassiveNFT 🎉
 
 💰 PassiveNFT это возможность ПРИУМНОЖИТЬ свои вложения вплоть до х10! 💰
@@ -116,6 +128,17 @@ class SafeConfig:
 
 ❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам."""
 
+        # ИСПРАВЛЕННЫЕ СООБЩЕНИЯ ДЛЯ РАБОТЫ БОТА
+        self.SUBSCRIPTION_DESCRIPTION = "💳 Нажми на интересующую тебя подписку"
+        self.CONTACT_MESSAGE = "💬 Если у вас возникли какие-либо трудности с оплатой или есть вопросы, нажмите кнопку \"Задать вопрос\"."
+        self.REFERRAL_MESSAGE = "👥 Реферальная система предназначена для амбассадоров закрытого проекта PassiveNFT и обычных участников\n\n🔗 Она состоит из пригласительной ссылки, где владелец ссылки получается 10% с его оплаты подписки, для более точных подробностей нажмите на кнопку \"Задать вопрос\"."
+
+        self.ACTIVITY_SUBSCRIPTION_TYPE_MESSAGE = """После перехода по кнопке подписки, выберите желаемый тип подписки:"""
+
+        self.ACTIVITY_SUBSCRIPTION_DESCRIPTION = """активные подписки представляют собой менее затратный способ получить возможность приумножить свои вложения путем участия в различных активностях
+
+чтобы ознакомиться с тем что входит в подписку, выберите заинтересовавший вас вариант снизу"""
+        
         self.REFERRAL_WELCOME_MESSAGE = """🎉 welcome to the PassiveNFT 🎉
 
 💰 PassiveNFT это возможность ПРИУМНОЖИТЬ свои вложения вплоть до х10! 💰
@@ -125,21 +148,19 @@ class SafeConfig:
 📋 ознакомиться со стоимостью подписок и что в них входит вы можете по кнопке "Подписки"
 
 ❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам."""
-        
-        self.SUBSCRIPTION_DESCRIPTION = "💳 Нажми на интересующую тебя подписку"
-        self.CONTACT_MESSAGE = "💬 Если у вас возникли какие-либо трудности с оплатой или есть вопросы, нажмите кнопку \"Задать вопрос\"."
-        self.REFERRAL_MESSAGE = "👥 Реферальная система предназначена для амбассадоров закрытого проекта PassiveNFT и обычных участников\n\n🔗 Она состоит из пригласительной ссылки, где владелец ссылки получается 10% с его оплаты подписки, для более точных подробностей нажмите на кнопку \"Задать вопрос\"."
-        
-        self.ACTIVITY_SUBSCRIPTION_TYPE_MESSAGE = """После перехода по кнопке подписки, выберите желаемый тип подписки:"""
-        self.ACTIVITY_SUBSCRIPTION_DESCRIPTION = """активные подписки представляют собой менее затратный способ получить возможность приумножить свои вложения путем участия в различных активностях
 
-чтобы ознакомиться с тем что входит в подписку, выберите заинтересовавший вас вариант снизу"""
-        
+        # ИСПРАВЛЕННОЕ сообщение для реферальной ссылки
         self.REFERRAL_LINK_MESSAGE = "🔗 **Ваша персональная реферальная ссылка:**\n\nПриглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!"
+        
         self.REFERRAL_STATS_MESSAGE = """Статистика ваших рефералов:
 {referrals_info}"""
 
         # Сообщения для оплаты через звездочки
+        self.STARS_PAYMENT_MESSAGE_TEMPLATE = f"""для оплаты по TON кошельку нажмите на [{self.TON_WALLET_ADDRESS}](ton://transfer?amount={{ton_amount}}&address={self.TON_WALLET_ADDRESS}) и отправьте {{ton_amount}} TON (эквивалентно ~{{stars}} звездам).
+для оплаты ЗВЕЗДОЧКАМИ перейдите [сюда](https://t.me/{self.STARS_USERNAME}) и отправьте подарком стоимость подписки + оплата комиссии
+после оплаты обратитесь к менеджеру [здесь](https://t.me/{self.MANAGER_USERNAME}) для подтверждения оплаты и для получения ссылки в закрытый ТГК."""
+
+        # Описания для каждого уровня звездочек
         self.STAR_SUBSCRIPTION_PLANS = [
             {
                 "stars": 25,
@@ -147,7 +168,7 @@ class SafeConfig:
                 "lot_cost": 15,
                 "description": """за вход в стоимость в 25 ЗВЕЗДОЧЕК вы получите шанс приумножить свою вложения вплоть до х56, всё зависит лишь от вашей скорости и удачи.
 
-стоимость розыгрываемого лота в активностях 15 звездочек, в день происходит 13 активностей которые идут каждый день в течении 7 дней с момента запуска ТГК.
+стоимость розыгрываемого лота в активностях 15 звездочек, в день происходит 13 активностей, которые идут каждый день в течении 7 дней с момента запуска ТГК.
 
 в подписку входят:
 
@@ -211,6 +232,10 @@ class SafeConfig:
             }
         ]
 
+        # Платежные инструкции
+        self.PAYMENT_INSTRUCTIONS = f"""Для оплаты отправьте {self.TON_WALLET_ADDRESS} на указанный выше адрес TON кошелька.
+⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON."""
+
     def _get_env_var(self, var_name: str, default_value: str = None) -> str:
         """Безопасное получение переменной окружения"""
         import os
@@ -223,11 +248,14 @@ class SafeConfig:
         """Получение списка админов по username"""
         return ["pro.player.egor", "admin"]
 
-# Инициализация конфигурации
+# Инициализация конфигурации - ИСПРАВЛЕНО: ИМПОРТ ИЗ config_deploy_new
 try:
     if os.path.exists('config_deploy_new.py'):
         from config_deploy_new import config
         logger.info("Конфигурация загружена из config_deploy_new.py")
+    elif os.path.exists('config_deploy.py'):
+        from config_deploy import config
+        logger.info("Конфигурация загружена из config_deploy.py")
     else:
         config = SafeConfig()
         logger.info("✅ Безопасная конфигурация загружена")
@@ -244,47 +272,16 @@ except Exception as e:
         logger.error(f"❌ Критическая ошибка загрузки конфигурации: {e2}")
         raise
 
+
 class PassiveNFTBot:
-    """Главный класс бота с асинхронной базой данных - ИСПРАВЛЕННАЯ ВЕРСИЯ"""
-    
+    """Главный класс бота с исправленной реферальной системой"""
     def __init__(self):
         self.config = config
-        self.database = AsyncDatabaseManager()  # Асинхронный менеджер БД
+        self.database = AsyncDatabaseManager()  # Асинхронная база данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
         self.application = None
-        
-        # Маппинг каналов (замените ID на реальные)
-        self.CHANNEL_MAPPINGS = {
-            # Stars платежи (4 канала)
-            25: -1001234567891,   # 25 звезд
-            50: -1001234567892,   # 50 звезд  
-            75: -1001234567893,   # 75 звезд
-            100: -1001234567894,  # 100 звезд
-            
-            # TON подписки (3 канала)
-            50: -1001234567895,   # 50 человек
-            100: -1001234567896,  # 100 человек
-            150: -1001234567897,  # 150 человек
-        }
-        
-        logger.info("🤖 PassiveNFT Bot инициализирован с async database")
+        self.setup_telegram_application()
 
-    async def initialize(self):
-        """Инициализация бота с асинхронной базой данных"""
-        try:
-            # Инициализация асинхронной базы данных
-            await self.database.initialize()
-            logger.info("✅ Асинхронная база данных инициализирована")
-            
-            # Настройка Telegram приложения
-            await self.setup_telegram_application()
-            logger.info("✅ Telegram приложение настроено")
-            
-        except Exception as e:
-            logger.error(f"❌ Ошибка инициализации бота: {e}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            raise
-
-    async def setup_telegram_application(self):
+    def setup_telegram_application(self):
         """Настройка Telegram приложения"""
         try:
             # Создание приложения
@@ -303,10 +300,10 @@ class PassiveNFTBot:
             self.application.add_handler(CommandHandler("adminserveraaref", self.admin_referrals_command))
             self.application.add_handler(CommandHandler("broadcast", self.broadcast_command))
             
-            # Команды для работы с каналами
-            self.application.add_handler(CommandHandler("testcmd", self.test_command))  # Тест команда
-            self.application.add_handler(CommandHandler("channel_info", self.get_channel_info_command))
+            # НОВЫЕ КОМАНДЫ ДЛЯ КАНАЛОВ - ИСПРАВЛЕНО
+            self.application.add_handler(CommandHandler("channel_info", self.channel_info_command))
             self.application.add_handler(CommandHandler("get_channel_id", self.get_channel_id_command))
+            self.application.add_handler(CommandHandler("testcmd", self.testcmd_command))
             
             # Обработчики подписок
             self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription$"))
@@ -316,7 +313,7 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.ton_subscription_plan_callback, pattern="^ton_subscription_plan_"))
             self.application.add_handler(CallbackQueryHandler(self.payment_callback, pattern="^payment_"))
             
-            # Обработчики для активных подписок
+            # ИСПРАВЛЕННЫЕ обработчики для активных подписок
             self.application.add_handler(CallbackQueryHandler(self.activity_subscription_callback, pattern="^activity_subscription_"))
             self.application.add_handler(CallbackQueryHandler(self.star_subscription_plan_callback, pattern="^star_plan_"))
             self.application.add_handler(CallbackQueryHandler(self.stars_payment_callback, pattern="^stars_payment_"))
@@ -332,6 +329,7 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
+            logger.info("Telegram приложение настроено")
         except Exception as e:
             logger.error(f"Ошибка настройки приложения: {e}")
             raise
@@ -346,67 +344,144 @@ class PassiveNFTBot:
         except Exception as e:
             logger.warning(f"⚠️ Ошибка при очистке webhook: {e}")
 
+    # НОВЫЕ КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ КАНАЛАМИ
+    async def channel_info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /channel_info - информация о каналах (только для админов)"""
+        try:
+            user = update.effective_user
+            logger.info(f"КОМАНДА ПОЛУЧЕНА: /channel_info от пользователя {user.id}")
+            
+            # Проверяем админские права
+            if user.id not in self.config.ADMIN_USER_IDS:
+                await update.message.reply_text("❌ У вас нет доступа к этой команде")
+                return
+
+            # ИСПРАВЛЕНО: Создаем текст с помощью .format() вместо f-строк с эмодзи
+            info_text = """
+**ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
+
+**Stars платежи:**
+⭐️ 25 звезд → ID: `{stars_25}`
+⭐️ 50 звезд → ID: `{stars_50}`
+⭐️ 75 звезд → ID: `{stars_75}`
+⭐️ 100 звезд → ID: `{stars_100}`
+⭐️ 150 звезд → ID: `{stars_150}`
+⭐️ 200 звезд → ID: `{stars_200}`
+⭐️ 250 звезд → ID: `{stars_250}`
+
+**Инструкции:**
+1. Замените placeholder ID на реальные ID каналов
+2. Добавьте бота в каждый канал как администратора
+3. Используйте /get_channel_id для получения реальных ID
+4. Обновите CHANNEL_MAPPINGS после получения реальных ID
+            """.format(
+                stars_25=self.config.CHANNEL_MAPPINGS.get(25, "НЕ НАСТРОЕН"),
+                stars_50=self.config.CHANNEL_MAPPINGS.get(50, "НЕ НАСТРОЕН"),
+                stars_75=self.config.CHANNEL_MAPPINGS.get(75, "НЕ НАСТРОЕН"),
+                stars_100=self.config.CHANNEL_MAPPINGS.get(100, "НЕ НАСТРОЕН"),
+                stars_150=self.config.CHANNEL_MAPPINGS.get(150, "НЕ НАСТРОЕН"),
+                stars_200=self.config.CHANNEL_MAPPINGS.get(200, "НЕ НАСТРОЕН"),
+                stars_250=self.config.CHANNEL_MAPPINGS.get(250, "НЕ НАСТРОЕН")
+            )
+
+            await update.message.reply_text(info_text, parse_mode='Markdown')
+            logger.info(f"Команда /channel_info выполнена для пользователя {user.id}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка в channel_info_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка при выполнении команды.")
+
+    async def get_channel_id_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /get_channel_id - получение ID текущего канала (только для админов)"""
+        try:
+            user = update.effective_user
+            logger.info(f"КОМАНДА ПОЛУЧЕНА: /get_channel_id от пользователя {user.id}")
+            
+            # Проверяем админские права
+            if user.id not in self.config.ADMIN_USER_IDS:
+                await update.message.reply_text("❌ У вас нет доступа к этой команде")
+                return
+
+            # Получаем информацию о чате
+            chat = update.effective_chat
+            
+            # ИСПРАВЛЕНО: Без эмодзи в f-строке
+            response_text = f"**ID КАНАЛА ПОЛУЧЕН**\n\n"
+            response_text += f"**Тип:** {chat.type}\n"
+            response_text += f"**Название:** {chat.title or 'Не указано'}\n"
+            response_text += f"**ID:** {chat.id}\n"
+            response_text += f"**Username:** @{chat.username or 'не указан'}"
+
+            await update.message.reply_text(response_text, parse_mode='Markdown')
+            logger.info(f"Команда /get_channel_id выполнена для пользователя {user.id}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка в get_channel_id_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка при выполнении команды.")
+
+    async def testcmd_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /testcmd - тестовая команда для проверки функционала (только для админов)"""
+        try:
+            user = update.effective_user
+            logger.info(f"КОМАНДА ПОЛУЧЕНА: /testcmd от пользователя {user.id}")
+            
+            # Проверяем админские права
+            if user.id not in self.config.ADMIN_USER_IDS:
+                await update.message.reply_text("❌ У вас нет доступа к этой команде")
+                return
+
+            # ИСПРАВЛЕНО: Без эмодзи в f-строке
+            test_text = f"**Тестовая команда работает**\n\n"
+            test_text += f"**Ваш ID:** {user.id}\n"
+            test_text += f"**Username:** @{user.username or 'не указан'}\n"
+            test_text += f"**Имя:** {user.first_name or 'Не указано'}\n"
+            test_text += f"**Бот активен и готов к работе!**"
+
+            await update.message.reply_text(test_text, parse_mode='Markdown')
+            logger.info(f"Команда /testcmd выполнена для пользователя {user.id}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка в testcmd_command: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await update.message.reply_text("❌ Произошла ошибка при выполнении команды.")
+
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Исправленный обработчик команды /start с улучшенной обработкой реферальных параметров"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /start от пользователя {update.effective_user.id}")
-        
+        """Обработчик команды /start с обработкой реферальных параметров"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /start от пользователя {update.effective_user.id}")
         try:
             user = update.effective_user
             args = context.args
             
-            # Подробное логирование параметров
-            logger.info(f"📋 Параметры команды: {args}")
-            logger.info(f"📋 Тип args: {type(args)}")
-            logger.info(f"📋 Длина args: {len(args) if args else 0}")
-            
-            # Добавляем пользователя в базу данных
-            referral_code = await self.database.get_or_create_user(
+            # Добавляем пользователя в базу данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
+            await self.database.get_or_create_user(
                 user.id, 
                 user.username or "", 
                 user.first_name or "", 
                 user.last_name or ""
             )
-            logger.info(f"✅ Пользователь {user.id} создан/найден в базе данных, реферальный код: {referral_code}")
             
-            # ОБРАБОТКА РЕФЕРАЛЬНОГО ПАРАМЕТРА
+            # Проверяем, есть ли реферальный параметр
             referrer_id = None
             if args and len(args) > 0:
                 arg = args[0]
-                logger.info(f"🔍 Анализ первого параметра: '{arg}'")
-                
                 if arg.startswith('ref_'):
-                    logger.info(f"✅ Параметр начинается с 'ref_', извлекаем ID...")
                     try:
                         referrer_id = int(arg[4:])  # Убираем "ref_" и получаем ID
-                        logger.info(f"📊 Извлеченный referrer_id: {referrer_id}")
-                        
                         if referrer_id != user.id:  # Нельзя быть реферером самому себе
-                            logger.info(f"💾 Сохраняем временного реферера: {referrer_id} для пользователя {user.id}")
+                            # Сохраняем информацию о рефере временно (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
                             await self.database.save_pending_referral(user.id, referrer_id)
-                            logger.info(f"✅ Реферер {referrer_id} сохранен для пользователя {user.id}")
-                        else:
-                            logger.warning(f"⚠️ Пользователь {user.id} пытается быть реферером самому себе")
-                    except ValueError as e:
-                        logger.error(f"❌ Ошибка преобразования referrer_id: {e}")
-                else:
-                    logger.info(f"❌ Параметр '{arg}' не начинается с 'ref_'")
-            else:
-                logger.info("📋 Параметры отсутствуют, реферальный параметр не передан")
-            
-            # Подробное логирование результата
-            if referrer_id:
-                logger.info(f"🎉 Пользователь {user.id} пришел от реферера {referrer_id}")
-            else:
-                logger.info(f"👤 Пользователь {user.id} пришел без реферального параметра")
-            
+                            logger.info(f"Пользователь {user.id} пришел от реферера {referrer_id}")
+                    except ValueError:
+                        pass  # Неверный формат, игнорируем
+
             # Выбираем соответствующее приветственное сообщение
             if referrer_id:
                 welcome_text = self.config.REFERRAL_WELCOME_MESSAGE
-                logger.info(f"📝 Используется реферальное приветственное сообщение")
             else:
                 welcome_text = self.config.WELCOME_MESSAGE
-                logger.info(f"📝 Используется обычное приветственное сообщение")
-            
+
             # ОРИГИНАЛЬНЫЕ КНОПКИ: Подписки, Связь, Реферальная система
             keyboard = [
                 [InlineKeyboardButton("💳 Подписки", callback_data="subscription")],
@@ -414,27 +489,25 @@ class PassiveNFTBot:
                 [InlineKeyboardButton("👥 Реферальная система", callback_data="referral")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
             await update.message.reply_text(welcome_text, reply_markup=reply_markup)
             logger.info(f"✅ /start выполнен успешно для пользователя {user.id}")
-            
         except Exception as e:
             logger.error(f"❌ Ошибка в start_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def confirm_payment_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды подтверждения оплаты"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /confirm_payment от пользователя {update.effective_user.id}")
+        """Обработчик команды подтверждения оплаты и добавления реферала с комиссией только за TON"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /confirm_payment от пользователя {update.effective_user.id}")
         try:
             user = update.effective_user
             pending_referrer = await self.database.get_pending_referrer(user.id)
 
             if pending_referrer:
-                # Добавляем реферала в базу
+                # Добавляем реферала в базу (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
                 success = await self.database.add_referral(pending_referrer, user.id)
                 if success:
-                    # УДАЛЯЕМ запись об ожидающем реферере
+                    # УДАЛЯЕМ запись об ожидающем реферере (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
                     await self.database.remove_pending_referral(user.id)
                     await update.message.reply_text("✅ Оплата подтверждена! Реферал успешно добавлен. Комиссия рефереру будет начислена только при оплате за TON подписку.")
                 else:
@@ -449,8 +522,8 @@ class PassiveNFTBot:
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Подписки'"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: subscription callback от пользователя {update.effective_user.id}")
+        """Обработчик кнопки 'Подписки' - БЕЗ ЖИРНОГО ТЕКСТА"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: subscription callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -482,8 +555,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def ton_subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик выбора обычного плана TON"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: ton_subscription_plan callback от пользователя {update.effective_user.id}")
+        """ИСПРАВЛЕННЫЙ обработчик выбора обычного плана TON с правильными ценами"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: ton_subscription_plan callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -513,7 +586,7 @@ class PassiveNFTBot:
 
     async def subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора конкретной подписки - выбор типа подписки"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: subscription_plan callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: subscription_plan callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -541,8 +614,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Оплатить'"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: payment callback от пользователя {update.effective_user.id}")
+        """Обработчик кнопки 'Оплатить' - БЕЗ ЖИРНОГО ТЕКСТА"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: payment callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -555,7 +628,7 @@ class PassiveNFTBot:
 
 📋 Подписка: {plan['name']}
 
-Адрес кошелька:
+ Адрес кошелька:
 <code>{self.config.TON_WALLET_ADDRESS}</code>
 
 ⚠️ ВАЖНО: Скопируйте адрес кошелька и отправьте указанную сумму TON.
@@ -575,8 +648,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def activity_subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик выбора активных подписок"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: activity_subscription callback от пользователя {update.effective_user.id}")
+        """Обработчик выбора активных подписок - ИСПРАВЛЕННЫЙ"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: activity_subscription callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -591,10 +664,10 @@ class PassiveNFTBot:
 
             # ИСПРАВЛЕННЫЕ кнопки выбора уровня звездочек с ПРАВИЛЬНЫМИ callback_data
             keyboard = [
-                [InlineKeyboardButton("⭐️ ВХОД 25 ЗВЕЗДОЧЕК", callback_data="star_plan_25")],
-                [InlineKeyboardButton("⭐️ ВХОД 50 ЗВЕЗДОЧЕК", callback_data="star_plan_50")],
-                [InlineKeyboardButton("⭐️ ВХОД 75 ЗВЕЗДОЧЕК", callback_data="star_plan_75")],
-                [InlineKeyboardButton("⭐️ ВХОД 100 ЗВЕЗДОЧЕК", callback_data="star_plan_100")],
+                [InlineKeyboardButton("⭐️ ВХОД 25 ЗВЕЗДОЧЕК", callback_data=f"star_plan_25")],
+                [InlineKeyboardButton("⭐️ ВХОД 50 ЗВЕЗДОЧЕК", callback_data=f"star_plan_50")],
+                [InlineKeyboardButton("⭐️ ВХОД 75 ЗВЕЗДОЧЕК", callback_data=f"star_plan_75")],
+                [InlineKeyboardButton("⭐️ ВХОД 100 ЗВЕЗДОЧЕК", callback_data=f"star_plan_100")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -606,8 +679,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def select_stars_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик выбора активных подписок (звездочки)"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: select_stars callback от пользователя {update.effective_user.id}")
+        """ИСПРАВЛЕННЫЙ обработчик выбора активных подписок (звездочки)"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: select_stars callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -636,8 +709,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def select_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик выбора обычных подписок (TON)"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: select_ton callback от пользователя {update.effective_user.id}")
+        """ИСПРАВЛЕННЫЙ обработчик выбора обычных подписок (TON) с ПРАВИЛЬНЫМИ ценами"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: select_ton callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -665,8 +738,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def star_subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик выбора конкретного плана звездочек"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: star_subscription_plan callback от пользователя {update.effective_user.id}")
+        """ИСПРАВЛЕННЫЙ обработчик выбора конкретного плана звездочек"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: star_subscription_plan callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -709,8 +782,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def stars_payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик оплаты через звездочки"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: stars_payment callback от пользователя {update.effective_user.id}")
+        """ИСПРАВЛЕННЫЙ обработчик оплаты через звездочки"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: stars_payment callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -739,15 +812,15 @@ class PassiveNFTBot:
 
 для оплаты в TON нажмите кнопку "Оплатить TON" и отправьте сумму указанную выше (при нажатии на эту кнопку, у пользователя копируется мой адрес тон кошелька)
 
-для оплаты ЗВЕЗДОЧКАМИ нажмите кнопку "Оплатить звездочками" и отправьте подарком стоимость подписки + оплата комиссии
+для оплаты ЗВЕЗДОЧКАМИ нажмите кнопку "Оплатить звездочками" и отправьте подарком стоимость подписки + оплата комиссии (при нажатии этой кнопки пользователя перекидывает на тг @{self.config.STARS_USERNAME})
 
-после оплаты обратитесь по кнопке "Менеджер" для подтверждения оплаты и для получения ссылки в закрытый ТГК.
+после оплаты обратитесь к менеджеру [здесь](https://t.me/{self.config.MANAGER_USERNAME}) для подтверждения оплаты и для получения ссылки в закрытый ТГК.
 
-⚠️ ВАЖНО: Для копирования оплаты через TON кошелек  нажмите на кнопку "Оплатить TON" """
+⚠️ ВАЖНО: Для копирования адреса кошелька нажмите на кнопку "Оплатить TON" """
 
             # ИСПРАВЛЕННЫЕ кнопки для оплаты - ПРЯМАЯ ССЫЛКА НА @pingvinchik_liza
             keyboard = [
-                [InlineKeyboardButton("💎 Оплатить TON", callback_data=f"copy_stars_ton_{stars}")],
+                [InlineKeyboardButton("💰 Оплатить TON", callback_data=f"copy_stars_ton_{stars}")],
                 [InlineKeyboardButton("⭐ Оплатить звездочками", url=f"https://t.me/{self.config.STARS_USERNAME}")],  # URL КНОПКА
                 [InlineKeyboardButton("👤 Менеджер", url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
                 [InlineKeyboardButton("🔙 Назад", callback_data=f"star_plan_{stars}")]
@@ -761,8 +834,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def copy_stars_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки "Оплатить TON" - копирование адреса"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: copy_stars_ton callback от пользователя {update.effective_user.id}")
+        """ИСПРАВЛЕННЫЙ обработчик кнопки "Оплатить TON" - копирование адреса"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_stars_ton callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -792,11 +865,14 @@ class PassiveNFTBot:
 📍 Адрес TON кошелька:
 <code>{self.config.TON_WALLET_ADDRESS}</code>
 
-!При нажатии кнопка выше скопирует адрес в буфер обмена!
+✅ При нажатии кнопка выше скопирует адрес в буфер обмена
 
 💰 Отправьте: ~{star_plan['ton_price']} TON (эквивалентно ~{stars} звездам)
 
-⏰ После оплаты обратитесь к кнопке "Менеджер" для подтверждения"""
+⏰ После оплаты обратитесь к менеджеру для подтверждения:
+👤 @{self.config.MANAGER_USERNAME}
+
+🔗 Связаться с менеджером: https://t.me/{self.config.MANAGER_USERNAME}"""
 
             # Кнопки для TON оплаты
             keyboard = [
@@ -813,8 +889,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def stars_payment_stars_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки "Оплатить звездочками" - редирект на менеджера"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: stars_payment_stars callback от пользователя {update.effective_user.id}")
+        """ИСПРАВЛЕННЫЙ обработчик кнопки "Оплатить звездочками" - редирект на менеджера"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: stars_payment_stars callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -852,8 +928,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def contact_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Связь'"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: contact callback от пользователя {update.effective_user.id}")
+        """Обработчик кнопки 'Связь' с ОРИГИНАЛЬНЫМ текстом"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: contact callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -883,8 +959,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def referral_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Реферальная система'"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: referral callback от пользователя {update.effective_user.id}")
+        """Обработчик кнопки 'Реферальная система' с ОРИГИНАЛЬНЫМИ кнопками"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: referral callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -916,8 +992,8 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def get_referral_link_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик получения реферальной ссылки"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: get_referral callback от пользователя {update.effective_user.id}")
+        """Обработчик получения реферальной ссылки - БЕЗ ЖИРНОГО ТЕКСТА"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: get_referral callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -939,17 +1015,17 @@ class PassiveNFTBot:
 
     async def referral_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик статистики рефералов"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: referral_stats callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: referral_stats callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # Получаем статистику пользователя
+            # Получаем статистику пользователя (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
             stats_text = await self.database.get_user_referral_stats(query.from_user.id)
-            if not stats_text:
+            if stats_text:
+                stats_text = self.config.REFERRAL_STATS_MESSAGE.format(referrals_info=stats_text)
+            else:
                 stats_text = "У вас пока нет рефералов."
-
-            stats_text = self.config.REFERRAL_STATS_MESSAGE.format(referrals_info=stats_text)
 
             # Кнопка "Назад"
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
@@ -963,13 +1039,13 @@ class PassiveNFTBot:
 
     async def copy_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик копирования TON адреса"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: copy_ton callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_ton callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
             await query.message.edit_text(
-                f"✅ Адрес кошелька скопирован!\n\n`{self.config.TON_WALLET_ADDRESS}`\n\nОтправьте указанную сумму TON.",
+                f"Адрес кошелька скопирован!\n\n`{self.config.TON_WALLET_ADDRESS}`\n\nОтправьте указанную сумму TON.",
                 parse_mode='Markdown'
             )
             logger.info(f"✅ Адрес TON скопирован для пользователя {update.effective_user.id}")
@@ -980,7 +1056,7 @@ class PassiveNFTBot:
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Назад' - возврат к главному меню"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: back callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: back callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
@@ -1010,165 +1086,9 @@ class PassiveNFTBot:
             logger.error(f"Traceback: {traceback.format_exc()}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
-    # =================================
-    # МЕТОДЫ СИСТЕМЫ КАНАЛОВ - ДОБАВЛЕНЫ
-    # =================================
-
-    async def get_channel_info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Получить информацию о доступных каналах"""
-        user_id = update.effective_user.id
-        
-        # Проверяем, является ли пользователь администратором
-        if user_id not in self.config.ADMIN_USER_IDS:
-            await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
-            return
-
-        info_text = """
-🔧 **ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
-
-**Stars платежи:**
-⭐️ 25 звезд → ID: `{stars_25}`
-⭐️ 50 звезд → ID: `{stars_50}`
-⭐️ 75 звезд → ID: `{stars_75}`
-⭐️ 100 звезд → ID: `{stars_100}`
-
-**TON подписки:**
-💰 50 человек → ID: `{ton_50}`
-💰 100 человек → ID: `{ton_100}`
-💰 150 человек → ID: `{ton_150}`
-
-**Команды:**
-📋 `/get_channel_id` - Получить ID текущего канала
-🔗 Ссылки отправляются автоматически после оплаты
-⏰ Временные ссылки действуют 24 часа
-
-**Для настройки:**
-1. Добавьте бота в канал как администратора
-2. В канале введите `/get_channel_id`
-3. Полученный ID вставьте в CHANNEL_MAPPINGS
-""".format(
-            stars_25=self.CHANNEL_MAPPINGS.get(25, "НЕ НАСТРОЕН"),
-            stars_50=self.CHANNEL_MAPPINGS.get(50, "НЕ НАСТРОЕН"),
-            stars_75=self.CHANNEL_MAPPINGS.get(75, "НЕ НАСТРОЕН"),
-            stars_100=self.CHANNEL_MAPPINGS.get(100, "НЕ НАСТРОЕН"),
-            ton_50=self.CHANNEL_MAPPINGS.get(50, "НЕ НАСТРОЕН"),
-            ton_100=self.CHANNEL_MAPPINGS.get(100, "НЕ НАСТРОЕН"),
-            ton_150=self.CHANNEL_MAPPINGS.get(150, "НЕ НАСТРОЕН")
-        )
-        
-        print(f"🔍 Команда /channel_info выполнена пользователем {user_id}")
-        await update.message.reply_text(info_text, parse_mode='Markdown')
-3. Полученный ID вставьте в CHANNEL_MAPPINGS
-""".format(
-            stars_25=self.CHANNEL_MAPPINGS.get(25, "НЕ НАСТРОЕН"),
-            stars_50=self.CHANNEL_MAPPINGS.get(50, "НЕ НАСТРОЕН"),
-            stars_75=self.CHANNEL_MAPPINGS.get(75, "НЕ НАСТРОЕН"),
-            stars_100=self.CHANNEL_MAPPINGS.get(100, "НЕ НАСТРОЕН"),
-            ton_50=self.CHANNEL_MAPPINGS.get(50, "НЕ НАСТРОЕН"),
-            ton_100=self.CHANNEL_MAPPINGS.get(100, "НЕ НАСТРОЕН"),
-            ton_150=self.CHANNEL_MAPPINGS.get(150, "НЕ НАСТРОЕН")
-        )
-        
-        print(f"🔍 Команда /channel_info выполнена пользователем {user_id}")
-        await update.message.reply_text(info_text, parse_mode='Markdown')
-
-    async def test_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Простая тестовая команда для диагностики"""
-        user_id = update.effective_user.id
-        print(f"🧪 TESTCMD вызвана пользователем {user_id}")
-        await update.message.reply_text(f"✅ Тестовая команда работает! Ваш ID: {user_id}")
-
-    async def get_channel_id_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Получить ID канала где выполняется команда"""
-        user_id = update.effective_user.id
-        
-        if user_id not in self.config.ADMIN_USER_IDS:
-            await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
-            return
-
-        try:
-            channel_id = update.effective_chat.id
-            channel_type = update.effective_chat.type
-            channel_title = update.effective_chat.title or "Личный чат"
-            
-            response_text = f"""
-✅ **ID КАНАЛА ПОЛУЧЕН**
-
-📋 **Тип:** {channel_type}
-📝 **Название:** {channel_title}
-🆔 **ID:** `{channel_id}`
-
-💡 **Используйте этот ID в файле бота:**
-```python
-CHANNEL_MAPPINGS = {{
-    25: {channel_id},   # Замените на ваш ID
-    # ... остальные каналы
-}}
-```
-"""
-            await update.message.reply_text(response_text, parse_mode='Markdown')
-            
-        except Exception as e:
-            await update.message.reply_text(f"❌ Ошибка получения ID: {e}")
-
-    async def send_channel_access(self, user_id: int, amount: int, payment_type: str):
-        """Отправить пользователю ссылку на канал"""
-        try:
-            # Определяем канал по сумме и типу платежа
-            channel_id = None
-            
-            if payment_type == "stars":
-                # Для Stars ищем в первых 4 каналах
-                for star_amount in [25, 50, 75, 100]:
-                    if amount == star_amount:
-                        channel_id = self.CHANNEL_MAPPINGS.get(star_amount)
-                        break
-            elif payment_type == "ton":
-                # Для TON ищем в последних 3 каналах  
-                for ton_amount in [50, 100, 150]:
-                    if amount == ton_amount:
-                        channel_id = self.CHANNEL_MAPPINGS.get(ton_amount)
-                        break
-            
-            if not channel_id:
-                logger.warning(f"⚠️ Канал не найден для {payment_type} {amount}")
-                return False
-            
-            # Создаем временную ссылку
-            invite_link = await self.application.bot.create_chat_invite_link(
-                chat_id=channel_id,
-                member_limit=1,  # Одноразовая ссылка
-                expire_date=int(time.time()) + 86400  # 24 часа
-            )
-            
-            # Отправляем ссылку пользователю
-            message_text = f"""
-🎉 **ДОСТУП К КАНАЛУ ПОЛУЧЕН!**
-
-✅ Платеж подтвержден: {payment_type.upper()} {amount}
-🔗 Временная ссылка (действует 24 часа): {invite_link.invite_link}
-
-⚠️ **Важно:** Ссылка работает только один раз!
-"""
-            
-            await self.application.bot.send_message(
-                chat_id=user_id,
-                text=message_text,
-                parse_mode='Markdown'
-            )
-            
-            logger.info(f"✅ Ссылка на канал {channel_id} отправлена пользователю {user_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Ошибка отправки ссылки канала: {e}")
-            return False
-
-    # =================================
-
     async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraa"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraa от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraa от пользователя {update.effective_user.id}")
         try:
             user = update.effective_user
 
@@ -1185,6 +1105,12 @@ CHANNEL_MAPPINGS = {{
 🔗 /adminserveraaref - реферальная статистика
 🔗 /confirm_payment - проверка оплаты
 📢 /broadcast <сообщение> - рассылка всем пользователям
+
+**НОВЫЕ КОМАНДЫ:**
+📺 /channel_info - информация о каналах
+🆔 /get_channel_id - получить ID текущего канала
+🔧 /testcmd - тестовая команда
+
 💳 Количество подписок:
 👥 на 150 человек: энное количество из 150
 👥 на 100 человек: энное количество из 100
@@ -1198,7 +1124,7 @@ CHANNEL_MAPPINGS = {{
 
     async def admin_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraastat"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraastat от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraastat от пользователя {update.effective_user.id}")
         try:
             user = update.effective_user
 
@@ -1235,7 +1161,7 @@ CHANNEL_MAPPINGS = {{
 
     async def admin_people_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraapeople"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraapeople от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraapeople от пользователя {update.effective_user.id}")
         try:
             user = update.effective_user
 
@@ -1247,7 +1173,7 @@ CHANNEL_MAPPINGS = {{
 
             # Получаем список участников
             try:
-                users_data = await self.database.get_subscribers()
+                users_data = self.database.get_subscribers()
                 
                 if users_data:
                     people_text = "👥 ПОСЛЕДНИЕ ПОЛЬЗОВАТЕЛИ:\n\n"
@@ -1269,7 +1195,7 @@ CHANNEL_MAPPINGS = {{
 
     async def admin_referrals_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraaref"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraaref от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraaref от пользователя {update.effective_user.id}")
         try:
             user = update.effective_user
 
@@ -1309,7 +1235,7 @@ CHANNEL_MAPPINGS = {{
 
     async def broadcast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /broadcast для рассылки сообщений всем пользователям"""
-        logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /broadcast от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /broadcast от пользователя {update.effective_user.id}")
         try:
             user = update.effective_user
 
@@ -1331,7 +1257,7 @@ CHANNEL_MAPPINGS = {{
             broadcast_message = ' '.join(context.args)
             
             # Получаем статистику пользователей
-            total_users = await self.database.get_all_users_count()
+            total_users = self.database.get_all_users_count()
             
             if total_users == 0:
                 await update.message.reply_text("❌ В базе данных нет зарегистрированных пользователей")
@@ -1350,9 +1276,11 @@ CHANNEL_MAPPINGS = {{
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка при рассылке. Попробуйте позже.")
 
+    # Функция get_all_users удалена - используем DatabaseManager методы
+
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик текстовых сообщений"""
-        logger.info(f"🎯 ТЕКСТОВОЕ СООБЩЕНИЕ ПОЛУЧЕНО: '{update.message.text}' от пользователя {update.effective_user.id}")
+        logger.info(f"ТЕКСТОВОЕ СООБЩЕНИЕ ПОЛУЧЕНО: '{update.message.text}' от пользователя {update.effective_user.id}")
         try:
             message = update.message.text.lower()
             if "admin" in message and update.effective_user.id in self.config.ADMIN_USER_IDS:
@@ -1367,17 +1295,26 @@ CHANNEL_MAPPINGS = {{
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
+    # Функция get_user_referral_stats удалена - используем DatabaseManager.get_user_referral_stats
+
+    # Функция get_subscription_stats удалена - используем DatabaseManager методы
+
+    # Функции get_subscribed_people, calculate_commission, add_referral_earnings, get_referrals_stats удалены - используем DatabaseManager методы
+
     async def run(self):
-        """Запуск бота с асинхронной базой данных"""
-        logger.info("🚀 Запуск PassiveNFT Bot с async database...")
+        """Запуск бота с улучшенной структурой"""
+        logger.info("🚀 Запуск PassiveNFT Bot на Render...")
+        
+        # Инициализация асинхронной базы данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
+        logger.info("🗄️ Инициализация асинхронной базы данных...")
+        await self.database.init_database()
+        logger.info("✅ Асинхронная база данных инициализирована")
+        
         logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
         logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
         logger.info("✅ Реферальная система включена (комиссия только за TON)")
         logger.info("⭐️ Активные подписки за звездочки включены")
-        logger.info("🔧 ПРОБЛЕМА ЗАВИСАНИЯ РЕШЕНА - используется aiosqlite!")
-
-        # Инициализация бота
-        await self.initialize()
+        logger.info("🆔 Новые команды для работы с каналами включены")
 
         # Очистка webhook перед запуском
         await self.clear_webhook_on_startup()
@@ -1419,10 +1356,6 @@ CHANNEL_MAPPINGS = {{
                     logger.info("✅ Polling остановлен")
                 await self.application.stop()
                 await self.application.shutdown()
-                
-                # Закрытие асинхронной базы данных
-                await self.database.close()
-                logger.info("✅ Асинхронная база данных закрыта")
                 logger.info("✅ Бот корректно остановлен")
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка при остановке бота: {e}")
@@ -1430,7 +1363,7 @@ CHANNEL_MAPPINGS = {{
 async def main():
     """Главная функция запуска с улучшенной обработкой ошибок"""
     try:
-        logger.info("🎯 Инициализация PassiveNFT Bot с async database...")
+        logger.info("🎯 Инициализация PassiveNFT Bot...")
         bot = PassiveNFTBot()
         logger.info("✅ Bot инициализирован, начинаем запуск...")
         await bot.run()
@@ -1459,7 +1392,7 @@ async def start_web_server():
     print(f"🚀 Web server started on port {port}")
 
 async def run_both():
-    """Запускает бота и веб-сервер одновременно"""
+    """Запускает бота и веб-сервер одновременно с улучшенной обработкой ошибок"""
     bot_instance = PassiveNFTBot()
     try:
         await asyncio.gather(
@@ -1473,7 +1406,7 @@ async def run_both():
 
 if __name__ == "__main__":
     try:
-        logger.info("🔥 ЗАПУСК PassiveNFT Bot с async database...")
+        logger.info("🔥 ЗАПУСК PassiveNFT Bot...")
         asyncio.run(run_both())
     except KeyboardInterrupt:
         logger.info("👋 Бот остановлен пользователем")
