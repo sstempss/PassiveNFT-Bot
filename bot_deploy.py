@@ -12,6 +12,7 @@ PassiveNFT Bot - ВЕРСИЯ С АКТИВНЫМИ ПОДПИСКАМИ (за �
 - Исправлена статистика подписок для админов
 - ИСПРАВЛЕНЫ ЭМОДЗИ В F-СТРОКАХ (SyntaxError)
 - ДОБАВЛЕНЫ КОМАНДЫ /channel_info, /get_channel_id, /testcmd
+- ИСПРАВЛЕНА ПРОБЛЕМА С PARSING MARKDOWN - правильное экранирование специальных символов
 """
 import asyncio
 import logging
@@ -20,6 +21,7 @@ import sys
 import traceback
 from pathlib import Path
 from typing import Optional
+import re
 
 # Импорты Telegram бота - ГЛОБАЛЬНЫЕ ИМПОРТЫ
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -43,6 +45,31 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# ФУНКЦИЯ ЭКРАНИРОВАНИЯ ДЛЯ MARKDOWN - ИСПРАВЛЕНИЕ ОШИБОК ПАРСИНГА
+def escape_markdown(text):
+    """Экранирование специальных символов Markdown для корректного парсинга"""
+    if text is None:
+        return ""
+    
+    # Специальные символы Markdown
+    special_chars = ['*', '_', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in special_chars:
+        text = text.replace(char, f'\\{char}')
+    
+    return text
+
+def safe_format_user_data(text, **kwargs):
+    """Безопасное форматирование текста с экранированием пользовательских данных"""
+    # Экранируем все пользовательские данные
+    safe_kwargs = {}
+    for key, value in kwargs.items():
+        if isinstance(value, str):
+            safe_kwargs[key] = escape_markdown(value)
+        else:
+            safe_kwargs[key] = value
+    
+    return text.format(**safe_kwargs)
 
 # Удаляем класс Database, используем DatabaseManager из database.py
 
@@ -356,8 +383,9 @@ class PassiveNFTBot:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
-            # ИСПРАВЛЕНО: Без эмодзи для избежания проблем
-            info_text = """
+            # ИСПРАВЛЕНО: Используем безопасное форматирование
+            info_text = safe_format_user_data(
+                """
 **ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
 
 **Stars платежи:**
@@ -374,14 +402,14 @@ class PassiveNFTBot:
 2. Добавьте бота в каждый канал как администратора
 3. Используйте /get_channel_id для получения реальных ID
 4. Обновите CHANNEL_MAPPINGS после получения реальных ID
-            """.format(
-                stars_25=self.config.CHANNEL_MAPPINGS.get(25, "НЕ НАСТРОЕН"),
-                stars_50=self.config.CHANNEL_MAPPINGS.get(50, "НЕ НАСТРОЕН"),
-                stars_75=self.config.CHANNEL_MAPPINGS.get(75, "НЕ НАСТРОЕН"),
-                stars_100=self.config.CHANNEL_MAPPINGS.get(100, "НЕ НАСТРОЕН"),
-                stars_150=self.config.CHANNEL_MAPPINGS.get(150, "НЕ НАСТРОЕН"),
-                stars_200=self.config.CHANNEL_MAPPINGS.get(200, "НЕ НАСТРОЕН"),
-                stars_250=self.config.CHANNEL_MAPPINGS.get(250, "НЕ НАСТРОЕН")
+                """,
+                stars_25=str(self.config.CHANNEL_MAPPINGS.get(25, "НЕ НАСТРОЕН")),
+                stars_50=str(self.config.CHANNEL_MAPPINGS.get(50, "НЕ НАСТРОЕН")),
+                stars_75=str(self.config.CHANNEL_MAPPINGS.get(75, "НЕ НАСТРОЕН")),
+                stars_100=str(self.config.CHANNEL_MAPPINGS.get(100, "НЕ НАСТРОЕН")),
+                stars_150=str(self.config.CHANNEL_MAPPINGS.get(150, "НЕ НАСТРОЕН")),
+                stars_200=str(self.config.CHANNEL_MAPPINGS.get(200, "НЕ НАСТРОЕН")),
+                stars_250=str(self.config.CHANNEL_MAPPINGS.get(250, "НЕ НАСТРОЕН"))
             )
 
             await update.message.reply_text(info_text, parse_mode='Markdown')
@@ -406,14 +434,21 @@ class PassiveNFTBot:
             # Получаем информацию о чате
             chat = update.effective_chat
             
-            # ИСПРАВЛЕНО: Используем Markdown для избежания проблем с HTML
-            response_text = f"**ID КАНАЛА ПОЛУЧЕН**\n\n"
-            response_text += f"**Тип:** {chat.type}\n"
-            response_text += f"**Название:** {chat.title or 'Не указано'}\n"
-            response_text += f"**ID:** {chat.id}\n"
-            response_text += f"**Username:** @{chat.username or 'не указан'}"
+            # ИСПРАВЛЕНО: Используем безопасное форматирование с экранированием
+            test_text = safe_format_user_data(
+                "**ID КАНАЛА ПОЛУЧЕН**\n\n"
+                "**Тип:** {chat_type}\n"
+                "**Название:** {chat_title}\n"
+                "**ID:** {chat_id}\n"
+                "**Username:** @{chat_username}\n\n"
+                "**Бот активен и готов к работе!**",
+                chat_type=chat.type,
+                chat_title=chat.title or "Не указано",
+                chat_id=chat.id,
+                chat_username=chat.username or "не указан"
+            )
 
-            await update.message.reply_text(response_text, parse_mode='Markdown')
+            await update.message.reply_text(test_text, parse_mode='Markdown')
             logger.info(f"Команда /get_channel_id выполнена для пользователя {user.id}")
             
         except Exception as e:
@@ -432,12 +467,17 @@ class PassiveNFTBot:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
-            # ИСПРАВЛЕНО: Используем Markdown для избежания проблем с HTML
-            test_text = f"**Тестовая команда работает**\n\n"
-            test_text += f"**Ваш ID:** {user.id}\n"
-            test_text += f"**Username:** @{user.username or 'не указан'}\n"
-            test_text += f"**Имя:** {user.first_name or 'Не указано'}\n"
-            test_text += f"**Бот активен и готов к работе!**"
+            # ИСПРАВЛЕНО: Используем безопасное форматирование с экранированием
+            test_text = safe_format_user_data(
+                "**Тестовая команда работает**\n\n"
+                "**Ваш ID:** {user_id}\n"
+                "**Username:** @{user_username}\n"
+                "**Имя:** {user_first_name}\n\n"
+                "**Бот активен и готов к работе!**",
+                user_id=user.id,
+                user_username=user.username or "не указан",
+                user_first_name=user.first_name or "Не указано"
+            )
 
             await update.message.reply_text(test_text, parse_mode='Markdown')
             logger.info(f"Команда /testcmd выполнена для пользователя {user.id}")
@@ -664,10 +704,10 @@ class PassiveNFTBot:
 
             # ИСПРАВЛЕННЫЕ кнопки выбора уровня звездочек с ПРАВИЛЬНЫМИ callback_data
             keyboard = [
-                [InlineKeyboardButton("⭐️ ВХОД 25 ЗВЕЗДОЧЕК", callback_data=f"star_plan_25")],
-                [InlineKeyboardButton("⭐️ ВХОД 50 ЗВЕЗДОЧЕК", callback_data=f"star_plan_50")],
-                [InlineKeyboardButton("⭐️ ВХОД 75 ЗВЕЗДОЧЕК", callback_data=f"star_plan_75")],
-                [InlineKeyboardButton("⭐️ ВХОД 100 ЗВЕЗДОЧЕК", callback_data=f"star_plan_100")],
+                [InlineKeyboardButton("⭐️ ВХОД 25 ЗВЕЗДОЧЕК", callback_data="star_plan_25")],
+                [InlineKeyboardButton("⭐️ ВХОД 50 ЗВЕЗДОЧЕК", callback_data="star_plan_50")],
+                [InlineKeyboardButton("⭐️ ВХОД 75 ЗВЕЗДОЧЕК", callback_data="star_plan_75")],
+                [InlineKeyboardButton("⭐️ ВХОД 100 ЗВЕЗДОЧЕК", callback_data="star_plan_100")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
