@@ -186,3 +186,7 @@ class Config:
 
 # Создаем глобальный экземпляр конфигурации
 config = Config()
+
+# ВАЖНО: Система каналов встроена в класс бота, а не в конфиг
+# Это предотвращает конфликты и ошибки привязки методов
+print("✅ Config loaded successfully - Channel system will be embedded in bot class")
