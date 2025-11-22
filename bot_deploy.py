@@ -168,7 +168,7 @@ class SafeConfig:
                 "lot_cost": 15,
                 "description": """за вход в стоимость в 25 ЗВЕЗДОЧЕК вы получите шанс приумножить свою вложения вплоть до х56, всё зависит лишь от вашей скорости и удачи.
 
-стоимость розыгрываемого лота в активностях 15 звездочек, в день происходит 13 активностей, которые идут каждый день в течении 7 дней с момента запуска ТГК.
+стоимость розыгрываемого лота в активностях 15 звездочек, в день происходит 13 активностей которые идут каждый день в течении 7 дней с момента запуска ТГК.
 
 в подписку входят:
 
@@ -356,18 +356,18 @@ class PassiveNFTBot:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
-            # ИСПРАВЛЕНО: Создаем текст с помощью .format() вместо f-строк с эмодзи
+            # ИСПРАВЛЕНО: Без эмодзи для избежания проблем
             info_text = """
 **ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
 
 **Stars платежи:**
-⭐️ 25 звезд → ID: `{stars_25}`
-⭐️ 50 звезд → ID: `{stars_50}`
-⭐️ 75 звезд → ID: `{stars_75}`
-⭐️ 100 звезд → ID: `{stars_100}`
-⭐️ 150 звезд → ID: `{stars_150}`
-⭐️ 200 звезд → ID: `{stars_200}`
-⭐️ 250 звезд → ID: `{stars_250}`
+25 звезд → ID: `{stars_25}`
+50 звезд → ID: `{stars_50}`
+75 звезд → ID: `{stars_75}`
+100 звезд → ID: `{stars_100}`
+150 звезд → ID: `{stars_150}`
+200 звезд → ID: `{stars_200}`
+250 звезд → ID: `{stars_250}`
 
 **Инструкции:**
 1. Замените placeholder ID на реальные ID каналов
@@ -406,14 +406,14 @@ class PassiveNFTBot:
             # Получаем информацию о чате
             chat = update.effective_chat
             
-            # ИСПРАВЛЕНО: Без эмодзи в f-строке
-            response_text = f"ID КАНАЛА ПОЛУЧЕН\n\n"
-            response_text += f"Тип: {chat.type}\n"
-            response_text += f"Название: {chat.title or 'Не указано'}\n"
-            response_text += f"ID: {chat.id}\n"
-            response_text += f"Username: @{chat.username or 'не указан'}"
+            # ИСПРАВЛЕНО: Используем Markdown для избежания проблем с HTML
+            response_text = f"**ID КАНАЛА ПОЛУЧЕН**\n\n"
+            response_text += f"**Тип:** {chat.type}\n"
+            response_text += f"**Название:** {chat.title or 'Не указано'}\n"
+            response_text += f"**ID:** {chat.id}\n"
+            response_text += f"**Username:** @{chat.username or 'не указан'}"
 
-            await update.message.reply_text(response_text, parse_mode='HTML')
+            await update.message.reply_text(response_text, parse_mode='Markdown')
             logger.info(f"Команда /get_channel_id выполнена для пользователя {user.id}")
             
         except Exception as e:
@@ -432,14 +432,14 @@ class PassiveNFTBot:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
-            # ИСПРАВЛЕНО: Без эмодзи в f-строке
-            test_text = f"Тестовая команда работает\n\n"
-            test_text += f"Ваш ID: {user.id}\n"
-            test_text += f"Username: @{user.username or 'не указан'}\n"
-            test_text += f"Имя: {user.first_name or 'Не указано'}\n"
-            test_text += f"Бот активен и готов к работе!"
+            # ИСПРАВЛЕНО: Используем Markdown для избежания проблем с HTML
+            test_text = f"**Тестовая команда работает**\n\n"
+            test_text += f"**Ваш ID:** {user.id}\n"
+            test_text += f"**Username:** @{user.username or 'не указан'}\n"
+            test_text += f"**Имя:** {user.first_name or 'Не указано'}\n"
+            test_text += f"**Бот активен и готов к работе!**"
 
-            await update.message.reply_text(test_text, parse_mode='HTML')
+            await update.message.reply_text(test_text, parse_mode='Markdown')
             logger.info(f"Команда /testcmd выполнена для пользователя {user.id}")
             
         except Exception as e:
