@@ -304,6 +304,7 @@ class PassiveNFTBot:
             self.application.add_handler(CommandHandler("broadcast", self.broadcast_command))
             
             # Команды для работы с каналами
+            self.application.add_handler(CommandHandler("testcmd", self.test_command))  # Тест команда
             self.application.add_handler(CommandHandler("channel_info", self.get_channel_info_command))
             self.application.add_handler(CommandHandler("get_channel_id", self.get_channel_id_command))
             
@@ -1015,20 +1016,14 @@ class PassiveNFTBot:
 
     async def get_channel_info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Получить информацию о доступных каналах"""
-        try:
-            user_id = update.effective_user.id
-            print(f"🔍 /channel_info вызвана пользователем {user_id}")
-            print(f"🔑 Список админов: {self.config.ADMIN_USER_IDS}")
-            
-            # Проверяем, является ли пользователь администратором
-            if user_id not in self.config.ADMIN_USER_IDS:
-                print(f"❌ Пользователь {user_id} не является администратором")
-                await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
-                return
+        user_id = update.effective_user.id
+        
+        # Проверяем, является ли пользователь администратором
+        if user_id not in self.config.ADMIN_USER_IDS:
+            await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
+            return
 
-            print(f"✅ Пользователь {user_id} прошел проверку администратора")
-
-            info_text = """
+        info_text = """
 🔧 **ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
 
 **Stars платежи:**
@@ -1052,15 +1047,13 @@ class PassiveNFTBot:
 2. В канале введите `/get_channel_id`
 3. Полученный ID вставьте в CHANNEL_MAPPINGS
 """
-            
-            print("📤 Отправляем сообщение с информацией...")
-            await update.message.reply_text(info_text, parse_mode='Markdown')
-            print("✅ Сообщение отправлено успешно")
-            
-        except Exception as e:
-            print(f"❌ Ошибка в get_channel_info_command: {e}")
-            await update.message.reply_text(f"❌ Ошибка: {e}")
-            raise
+        await update.message.reply_text(info_text, parse_mode='Markdown')
+
+    async def test_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Простая тестовая команда для диагностики"""
+        user_id = update.effective_user.id
+        print(f"🧪 TESTCMD вызвана пользователем {user_id}")
+        await update.message.reply_text(f"✅ Тестовая команда работает! Ваш ID: {user_id}")
 
     async def get_channel_id_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Получить ID канала где выполняется команда"""
