@@ -407,13 +407,13 @@ class PassiveNFTBot:
             chat = update.effective_chat
             
             # ИСПРАВЛЕНО: Без эмодзи в f-строке
-            response_text = f"**ID КАНАЛА ПОЛУЧЕН**\n\n"
-            response_text += f"**Тип:** {chat.type}\n"
-            response_text += f"**Название:** {chat.title or 'Не указано'}\n"
-            response_text += f"**ID:** {chat.id}\n"
-            response_text += f"**Username:** @{chat.username or 'не указан'}"
+            response_text = f"ID КАНАЛА ПОЛУЧЕН<br><br>"
+            response_text += f"Тип: {chat.type}<br>"
+            response_text += f"Название: {chat.title or 'Не указано'}<br>"
+            response_text += f"ID: {chat.id}<br>"
+            response_text += f"Username: @{chat.username or 'не указан'}"
 
-            await update.message.reply_text(response_text, parse_mode='Markdown')
+            await update.message.reply_text(response_text, parse_mode='HTML')
             logger.info(f"Команда /get_channel_id выполнена для пользователя {user.id}")
             
         except Exception as e:
@@ -433,13 +433,13 @@ class PassiveNFTBot:
                 return
 
             # ИСПРАВЛЕНО: Без эмодзи в f-строке
-            test_text = f"**Тестовая команда работает**\n\n"
-            test_text += f"**Ваш ID:** {user.id}\n"
-            test_text += f"**Username:** @{user.username or 'не указан'}\n"
-            test_text += f"**Имя:** {user.first_name or 'Не указано'}\n"
-            test_text += f"**Бот активен и готов к работе!**"
+            test_text = f"Тестовая команда работает<br><br>"
+            test_text += f"Ваш ID: {user.id}<br>"
+            test_text += f"Username: @{user.username or 'не указан'}<br>"
+            test_text += f"Имя: {user.first_name or 'Не указано'}<br>"
+            test_text += f"Бот активен и готов к работе!"
 
-            await update.message.reply_text(test_text, parse_mode='Markdown')
+            await update.message.reply_text(test_text, parse_mode='HTML')
             logger.info(f"Команда /testcmd выполнена для пользователя {user.id}")
             
         except Exception as e:
