@@ -304,7 +304,6 @@ class PassiveNFTBot:
             self.application.add_handler(CommandHandler("broadcast", self.broadcast_command))
             
             # Команды для работы с каналами
-            self.application.add_handler(CommandHandler("channels", self.channels_command))
             self.application.add_handler(CommandHandler("channel_info", self.get_channel_info_command))
             self.application.add_handler(CommandHandler("get_channel_id", self.get_channel_id_command))
             
@@ -1016,14 +1015,20 @@ class PassiveNFTBot:
 
     async def get_channel_info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Получить информацию о доступных каналах"""
-        user_id = update.effective_user.id
-        
-        # Проверяем, является ли пользователь администратором
-        if user_id not in self.config.ADMIN_USER_IDS:
-            await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
-            return
+        try:
+            user_id = update.effective_user.id
+            print(f"🔍 /channel_info вызвана пользователем {user_id}")
+            print(f"🔑 Список админов: {self.config.ADMIN_USER_IDS}")
+            
+            # Проверяем, является ли пользователь администратором
+            if user_id not in self.config.ADMIN_USER_IDS:
+                print(f"❌ Пользователь {user_id} не является администратором")
+                await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
+                return
 
-        info_text = """
+            print(f"✅ Пользователь {user_id} прошел проверку администратора")
+
+            info_text = """
 🔧 **ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
 
 **Stars платежи:**
@@ -1047,29 +1052,15 @@ class PassiveNFTBot:
 2. В канале введите `/get_channel_id`
 3. Полученный ID вставьте в CHANNEL_MAPPINGS
 """
-        await update.message.reply_text(info_text, parse_mode='Markdown')
-
-    async def channels_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Показать доступные каналы пользователю"""
-        channels_text = """
-📋 **ДОСТУПНЫЕ КАНАЛЫ**
-
-🔹 **Канал на 150 человек**
-   💰 1.50 TON
-
-🔹 **Канал на 100 человек** 
-   💰 1.20 TON
-
-🔹 **Канал на 50 человек**
-   💰 0.80 TON
-
-💡 Для доступа к каналу используйте команду /start
-   и выберите подходящий план подписки.
-
-⭐️ **Звездочки:** 25, 50, 75 или 100 звезд
-💰 **TON:** различные планы подписок
-"""
-        await update.message.reply_text(channels_text, parse_mode='Markdown')
+            
+            print("📤 Отправляем сообщение с информацией...")
+            await update.message.reply_text(info_text, parse_mode='Markdown')
+            print("✅ Сообщение отправлено успешно")
+            
+        except Exception as e:
+            print(f"❌ Ошибка в get_channel_info_command: {e}")
+            await update.message.reply_text(f"❌ Ошибка: {e}")
+            raise
 
     async def get_channel_id_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Получить ID канала где выполняется команда"""
