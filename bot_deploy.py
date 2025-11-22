@@ -21,6 +21,7 @@ import sys
 import traceback
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 import re
 
 # Импорты Telegram бота - ГЛОБАЛЬНЫЕ ИМПОРТЫ
@@ -46,30 +47,65 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ФУНКЦИЯ ЭКРАНИРОВАНИЯ ДЛЯ MARKDOWN - ИСПРАВЛЕНИЕ ОШИБОК ПАРСИНГА
+# УЛУЧШЕННАЯ ФУНКЦИЯ ЭКРАНИРОВАНИЯ ДЛЯ MARKDOWN - ИСПРАВЛЕНИЕ ОШИБОК ПАРСИНГА
 def escape_markdown(text):
-    """Экранирование специальных символов Markdown для корректного парсинга"""
+    """Улучшенное экранирование специальных символов Markdown для корректного парсинга"""
     if text is None:
         return ""
     
-    # Специальные символы Markdown
-    special_chars = ['*', '_', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    for char in special_chars:
-        text = text.replace(char, f'\\{char}')
+    text = str(text)
+    
+    # УЛУЧШЕННЫЕ пары экранирования - порядок важен!
+    escape_pairs = [
+        ('\\', '\\\\'),  # Сначала экранируем обратные слеши
+        ('*', '\\*'),      # Жирный/курсив
+        ('_', '\\_'),      # Подчеркивание
+        ('[', '\\['),      # Ссылка
+        (']', '\\]'),      # Ссылка  
+        ('(', '\\('),      # Ссылка
+        (')', '\\)'),      # Ссылка
+        ('~', '\\~'),      # Зачеркивание
+        ('`', '\\`'),      # Код
+        ('>', '\\>'),      # Цитата
+        ('#', '\\#'),      # Заголовок
+        ('+', '\\+'),      # Список
+        ('-', '\\-'),      # Список
+        ('=', '\\='),      # Заголовок
+        ('|', '\\|'),      # Таблица
+        ('{', '\\{'),      # Форматирование
+        ('}', '\\}'),      # Форматирование
+        ('.', '\\.'),      # Конец предложения
+        ('!', '\\!'),      # Восклицание
+    ]
+    
+    for char, escaped in escape_pairs:
+        text = text.replace(char, escaped)
     
     return text
 
 def safe_format_user_data(text, **kwargs):
-    """Безопасное форматирование текста с экранированием пользовательских данных"""
-    # Экранируем все пользовательские данные
-    safe_kwargs = {}
-    for key, value in kwargs.items():
-        if isinstance(value, str):
-            safe_kwargs[key] = escape_markdown(value)
-        else:
-            safe_kwargs[key] = value
-    
-    return text.format(**safe_kwargs)
+    """Улучшенное безопасное форматирование текста с экранированием пользовательских данных"""
+    try:
+        # Экранируем все пользовательские данные
+        safe_kwargs = {}
+        for key, value in kwargs.items():
+            if isinstance(value, str):
+                safe_kwargs[key] = escape_markdown(value)
+            else:
+                # Для числовых значений также применяем экранирование как строки
+                safe_kwargs[key] = escape_markdown(str(value))
+        
+        # Форматируем текст с безопасными параметрами
+        result = text.format(**safe_kwargs)
+        return result
+        
+    except KeyError as e:
+        logger.error(f"Ошибка форматирования - отсутствует ключ: {e}")
+        # Возвращаем текст без форматирования для диагностики
+        return f"ОШИБКА ФОРМАТИРОВАНИЯ: {text}\nПараметры: {kwargs}"
+    except Exception as e:
+        logger.error(f"Общая ошибка форматирования: {e}")
+        return f"ОБЩАЯ ОШИБКА ФОРМАТИРОВАНИЯ: {text}\nОшибка: {e}"
 
 # Удаляем класс Database, используем DatabaseManager из database.py
 
@@ -371,7 +407,7 @@ class PassiveNFTBot:
         except Exception as e:
             logger.warning(f"⚠️ Ошибка при очистке webhook: {e}")
 
-    # НОВЫЕ КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ КАНАЛАМИ
+    # НОВЫЕ КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ КАНАЛАМИ - УЛУЧШЕННАЯ ВЕРСИЯ
     async def channel_info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /channel_info - информация о каналах (только для админов)"""
         try:
@@ -383,9 +419,23 @@ class PassiveNFTBot:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
-            # ИСПРАВЛЕНО: Используем безопасное форматирование
-            info_text = safe_format_user_data(
-                """
+            # УЛУЧШЕННОЕ ФОРМАТИРОВАНИЕ С ДИАГНОСТИКОЙ
+            try:
+                # Подготавливаем данные для форматирования
+                channel_data = {}
+                for stars, channel_id in self.config.CHANNEL_MAPPINGS.items():
+                    channel_data[f'stars_{stars}'] = str(channel_id)
+                
+                # Добавляем недостающие ключи с дефолтными значениями
+                for stars in [25, 50, 75, 100, 150, 200, 250]:
+                    if f'stars_{stars}' not in channel_data:
+                        channel_data[f'stars_{stars}'] = "НЕ НАСТРОЕН"
+                
+                logger.info(f"Данные для форматирования: {channel_data}")
+                
+                # ИСПРАВЛЕНО: Улучшенное безопасное форматирование
+                info_text = safe_format_user_data(
+                    """
 **ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
 
 **Stars платежи:**
@@ -402,18 +452,31 @@ class PassiveNFTBot:
 2. Добавьте бота в каждый канал как администратора
 3. Используйте /get_channel_id для получения реальных ID
 4. Обновите CHANNEL_MAPPINGS после получения реальных ID
-                """,
-                stars_25=str(self.config.CHANNEL_MAPPINGS.get(25, "НЕ НАСТРОЕН")),
-                stars_50=str(self.config.CHANNEL_MAPPINGS.get(50, "НЕ НАСТРОЕН")),
-                stars_75=str(self.config.CHANNEL_MAPPINGS.get(75, "НЕ НАСТРОЕН")),
-                stars_100=str(self.config.CHANNEL_MAPPINGS.get(100, "НЕ НАСТРОЕН")),
-                stars_150=str(self.config.CHANNEL_MAPPINGS.get(150, "НЕ НАСТРОЕН")),
-                stars_200=str(self.config.CHANNEL_MAPPINGS.get(200, "НЕ НАСТРОЕН")),
-                stars_250=str(self.config.CHANNEL_MAPPINGS.get(250, "НЕ НАСТРОЕН"))
-            )
 
-            await update.message.reply_text(info_text, parse_mode='Markdown')
-            logger.info(f"Команда /channel_info выполнена для пользователя {user.id}")
+**Диагностика:**
+CHANNEL_MAPPINGS: {diagnostic_info}
+                    """,
+                    **channel_data,
+                    diagnostic_info=str(self.config.CHANNEL_MAPPINGS)
+                )
+                
+                await update.message.reply_text(info_text, parse_mode='Markdown')
+                logger.info(f"Команда /channel_info выполнена для пользователя {user.id}")
+                
+            except Exception as format_error:
+                logger.error(f"Ошибка форматирования: {format_error}")
+                # Отправляем детальную диагностическую информацию
+                diagnostic_text = f"""
+**ОШИБКА ФОРМАТИРОВАНИЯ**
+
+**CHANNEL_MAPPINGS:** {self.config.CHANNEL_MAPPINGS}
+
+**Детали ошибки:** {str(format_error)}
+
+**Типы данных:**
+{[(k, type(v), str(v)) for k, v in self.config.CHANNEL_MAPPINGS.items()]}
+                """
+                await update.message.reply_text(diagnostic_text, parse_mode='Markdown')
             
         except Exception as e:
             logger.error(f"Ошибка в channel_info_command: {e}")
@@ -434,22 +497,36 @@ class PassiveNFTBot:
             # Получаем информацию о чате
             chat = update.effective_chat
             
-            # ИСПРАВЛЕНО: Используем безопасное форматирование с экранированием
-            test_text = safe_format_user_data(
-                "**ID КАНАЛА ПОЛУЧЕН**\n\n"
-                "**Тип:** {chat_type}\n"
-                "**Название:** {chat_title}\n"
-                "**ID:** {chat_id}\n"
-                "**Username:** @{chat_username}\n\n"
-                "**Бот активен и готов к работе!**",
-                chat_type=chat.type,
-                chat_title=chat.title or "Не указано",
-                chat_id=chat.id,
-                chat_username=chat.username or "не указан"
-            )
+            # УЛУЧШЕННОЕ: Улучшенное безопасное форматирование с экранированием
+            try:
+                test_text = safe_format_user_data(
+                    "**ID КАНАЛА ПОЛУЧЕН**\n\n"
+                    "**Тип:** {chat_type}\n"
+                    "**Название:** {chat_title}\n"
+                    "**ID:** {chat_id}\n"
+                    "**Username:** @{chat_username}\n\n"
+                    "**Бот активен и готов к работе!**",
+                    chat_type=str(chat.type),
+                    chat_title=str(chat.title or "Не указано"),
+                    chat_id=str(chat.id),
+                    chat_username=str(chat.username or "не указан")
+                )
 
-            await update.message.reply_text(test_text, parse_mode='Markdown')
-            logger.info(f"Команда /get_channel_id выполнена для пользователя {user.id}")
+                await update.message.reply_text(test_text, parse_mode='Markdown')
+                logger.info(f"Команда /get_channel_id выполнена для пользователя {user.id}")
+                
+            except Exception as format_error:
+                logger.error(f"Ошибка форматирования в get_channel_id: {format_error}")
+                # Отправляем простую диагностическую информацию
+                simple_info = f"""**ID КАНАЛА ПОЛУЧЕН**
+
+Тип: {chat.type}
+Название: {chat.title or 'Не указано'}  
+ID: {chat.id}
+Username: @{chat.username or 'не указан'}
+
+Бот активен и готов к работе!"""
+                await update.message.reply_text(simple_info, parse_mode='Markdown')
             
         except Exception as e:
             logger.error(f"Ошибка в get_channel_id_command: {e}")
@@ -467,20 +544,36 @@ class PassiveNFTBot:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
-            # ИСПРАВЛЕНО: Используем безопасное форматирование с экранированием
-            test_text = safe_format_user_data(
-                "**Тестовая команда работает**\n\n"
-                "**Ваш ID:** {user_id}\n"
-                "**Username:** @{user_username}\n"
-                "**Имя:** {user_first_name}\n\n"
-                "**Бот активен и готов к работе!**",
-                user_id=user.id,
-                user_username=user.username or "не указан",
-                user_first_name=user.first_name or "Не указано"
-            )
+            # УЛУЧШЕННОЕ: Тестовая команда с диагностикой
+            try:
+                test_text = safe_format_user_data(
+                    "**ТЕСТОВАЯ КОМАНДА ВЫПОЛНЕНА**\n\n"
+                    "**Пользователь:** {user_name}\n"
+                    "**ID:** {user_id}\n"
+                    "**Время:** {timestamp}\n"
+                    "**Бот статус:** Активен ✅\n"
+                    "**База данных:** Подключена ✅\n\n"
+                    "**Markdown экранирование:** Работает ✅",
+                    user_name=str(user.first_name or user.username or "Unknown"),
+                    user_id=str(user.id),
+                    timestamp=str(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                )
 
-            await update.message.reply_text(test_text, parse_mode='Markdown')
-            logger.info(f"Команда /testcmd выполнена для пользователя {user.id}")
+                await update.message.reply_text(test_text, parse_mode='Markdown')
+                logger.info(f"Команда /testcmd выполнена для пользователя {user.id}")
+                
+            except Exception as format_error:
+                logger.error(f"Ошибка форматирования в testcmd: {format_error}")
+                # Простой текст без форматирования для диагностики
+                simple_test = f"""ТЕСТОВАЯ КОМАНДА ВЫПОЛНЕНА
+
+Пользователь: {user.first_name or user.username or "Unknown"}
+ID: {user.id}
+Время: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+Бот статус: Активен ✅
+База данных: Подключена ✅"""
+                await update.message.reply_text(simple_test)
             
         except Exception as e:
             logger.error(f"Ошибка в testcmd_command: {e}")
