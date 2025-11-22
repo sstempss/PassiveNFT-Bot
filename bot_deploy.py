@@ -251,6 +251,21 @@ class PassiveNFTBot:
         self.config = config
         self.database = AsyncDatabaseManager()  # Асинхронный менеджер БД
         self.application = None
+        
+        # Маппинг каналов (замените ID на реальные)
+        self.CHANNEL_MAPPINGS = {
+            # Stars платежи (4 канала)
+            25: -1001234567891,   # 25 звезд
+            50: -1001234567892,   # 50 звезд  
+            75: -1001234567893,   # 75 звезд
+            100: -1001234567894,  # 100 звезд
+            
+            # TON подписки (3 канала)
+            50: -1001234567895,   # 50 человек
+            100: -1001234567896,  # 100 человек
+            150: -1001234567897,  # 150 человек
+        }
+        
         logger.info("🤖 PassiveNFT Bot инициализирован с async database")
 
     async def initialize(self):
@@ -994,6 +1009,133 @@ class PassiveNFTBot:
             logger.error(f"Traceback: {traceback.format_exc()}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
+    # =================================
+    # МЕТОДЫ СИСТЕМЫ КАНАЛОВ - ДОБАВЛЕНЫ
+    # =================================
+
+    async def get_channel_info_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Получить информацию о доступных каналах"""
+        user_id = update.effective_user.id
+        
+        # Проверяем, является ли пользователь администратором
+        if user_id not in self.config.ADMIN_USER_IDS:
+            await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
+            return
+
+        info_text = """
+🔧 **ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
+
+**Stars платежи:**
+⭐️ 25 звезд → Канал 1
+⭐️ 50 звезд → Канал 2
+⭐️ 75 звезд → Канал 3
+⭐️ 100 звезд → Канал 4
+
+**TON подписки:**
+💰 50 человек → Канал 1
+💰 100 человек → Канал 2  
+💰 150 человек → Канал 3
+
+**Команды:**
+📋 `/get_channel_id` - Получить ID текущего канала
+🔗 Ссылки отправляются автоматически после оплаты
+⏰ Временные ссылки действуют 24 часа
+
+**Для настройки:**
+1. Добавьте бота в канал как администратора
+2. В канале введите `/get_channel_id`
+3. Полученный ID вставьте в CHANNEL_MAPPINGS
+"""
+        await update.message.reply_text(info_text, parse_mode='Markdown')
+
+    async def get_channel_id_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Получить ID канала где выполняется команда"""
+        user_id = update.effective_user.id
+        
+        if user_id not in self.config.ADMIN_USER_IDS:
+            await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
+            return
+
+        try:
+            channel_id = update.effective_chat.id
+            channel_type = update.effective_chat.type
+            channel_title = update.effective_chat.title or "Личный чат"
+            
+            response_text = f"""
+✅ **ID КАНАЛА ПОЛУЧЕН**
+
+📋 **Тип:** {channel_type}
+📝 **Название:** {channel_title}
+🆔 **ID:** `{channel_id}`
+
+💡 **Используйте этот ID в файле бота:**
+```python
+CHANNEL_MAPPINGS = {{
+    25: {channel_id},   # Замените на ваш ID
+    # ... остальные каналы
+}}
+```
+"""
+            await update.message.reply_text(response_text, parse_mode='Markdown')
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Ошибка получения ID: {e}")
+
+    async def send_channel_access(self, user_id: int, amount: int, payment_type: str):
+        """Отправить пользователю ссылку на канал"""
+        try:
+            # Определяем канал по сумме и типу платежа
+            channel_id = None
+            
+            if payment_type == "stars":
+                # Для Stars ищем в первых 4 каналах
+                for star_amount in [25, 50, 75, 100]:
+                    if amount == star_amount:
+                        channel_id = self.CHANNEL_MAPPINGS.get(star_amount)
+                        break
+            elif payment_type == "ton":
+                # Для TON ищем в последних 3 каналах  
+                for ton_amount in [50, 100, 150]:
+                    if amount == ton_amount:
+                        channel_id = self.CHANNEL_MAPPINGS.get(ton_amount)
+                        break
+            
+            if not channel_id:
+                logger.warning(f"⚠️ Канал не найден для {payment_type} {amount}")
+                return False
+            
+            # Создаем временную ссылку
+            invite_link = await self.application.bot.create_chat_invite_link(
+                chat_id=channel_id,
+                member_limit=1,  # Одноразовая ссылка
+                expire_date=int(time.time()) + 86400  # 24 часа
+            )
+            
+            # Отправляем ссылку пользователю
+            message_text = f"""
+🎉 **ДОСТУП К КАНАЛУ ПОЛУЧЕН!**
+
+✅ Платеж подтвержден: {payment_type.upper()} {amount}
+🔗 Временная ссылка (действует 24 часа): {invite_link.invite_link}
+
+⚠️ **Важно:** Ссылка работает только один раз!
+"""
+            
+            await self.application.bot.send_message(
+                chat_id=user_id,
+                text=message_text,
+                parse_mode='Markdown'
+            )
+            
+            logger.info(f"✅ Ссылка на канал {channel_id} отправлена пользователю {user_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки ссылки канала: {e}")
+            return False
+
+    # =================================
+
     async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraa"""
         logger.info(f"🎯 КОМАНДА ПОЛУЧЕНА: /adminserveraa от пользователя {update.effective_user.id}")
@@ -1194,155 +1336,6 @@ class PassiveNFTBot:
             logger.error(f"❌ Ошибка в handle_message: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
-
-        # =========================
-        # СИСТЕМА КАНАЛОВ - НАЧАЛО
-        # =========================
-
-        # Маппинг каналов (замените ID на реальные)
-        CHANNEL_MAPPINGS = {
-            # Stars платежи (4 канала)
-            25: -1001234567891,   # 25 звезд
-            50: -1001234567892,   # 50 звезд  
-            75: -1001234567893,   # 75 звезд
-            100: -1001234567894,  # 100 звезд
-            
-            # TON подписки (3 канала)
-            50: -1001234567895,   # 50 человек
-            100: -1001234567896,  # 100 человек
-            150: -1001234567897,  # 150 человек
-        }
-
-        async def get_channel_info_command(self, update, context):
-            """Получить информацию о доступных каналах"""
-            user_id = update.effective_user.id
-            
-            # Проверяем, является ли пользователь администратором
-            if user_id not in self.config.ADMIN_USER_IDS:
-                await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
-                return
-
-            info_text = """
-🔧 **ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
-
-**Stars платежи:**
-⭐️ 25 звезд → Канал 1
-⭐️ 50 звезд → Канал 2
-⭐️ 75 звезд → Канал 3
-⭐️ 100 звезд → Канал 4
-
-**TON подписки:**
-💰 50 человек → Канал 1
-💰 100 человек → Канал 2  
-💰 150 человек → Канал 3
-
-**Команды:**
-📋 `/get_channel_id` - Получить ID текущего канала
-🔗 Ссылки отправляются автоматически после оплаты
-⏰ Временные ссылки действуют 24 часа
-
-**Для настройки:**
-1. Добавьте бота в канал как администратора
-2. В канале введите `/get_channel_id`
-3. Полученный ID вставьте в CHANNEL_MAPPINGS
-"""
-            await update.message.reply_text(info_text, parse_mode='Markdown')
-
-        async def get_channel_id_command(self, update, context):
-            """Получить ID канала где выполняется команда"""
-            user_id = update.effective_user.id
-            
-            if user_id not in self.config.ADMIN_USER_IDS:
-                await update.message.reply_text("❌ У вас нет прав доступа к этой команде!")
-                return
-
-            try:
-                channel_id = update.effective_chat.id
-                channel_type = update.effective_chat.type
-                channel_title = update.effective_chat.title or "Личный чат"
-                
-                response_text = f"""
-✅ **ID КАНАЛА ПОЛУЧЕН**
-
-📋 **Тип:** {channel_type}
-📝 **Название:** {channel_title}
-🆔 **ID:** `{channel_id}`
-
-💡 **Используйте этот ID в файле бота:**
-```python
-CHANNEL_MAPPINGS = {{
-    25: {channel_id},   # Замените на ваш ID
-    # ... остальные каналы
-}}
-```
-"""
-                await update.message.reply_text(response_text, parse_mode='Markdown')
-                
-            except Exception as e:
-                await update.message.reply_text(f"❌ Ошибка получения ID: {e}")
-
-        async def send_channel_access(self, user_id, amount, payment_type):
-            """Отправить пользователю ссылку на канал"""
-            try:
-                # Определяем канал по сумме и типу платежа
-                channel_id = None
-                
-                if payment_type == "stars":
-                    # Для Stars ищем в первых 4 каналах
-                    for star_amount in [25, 50, 75, 100]:
-                        if amount == star_amount:
-                            channel_id = self.CHANNEL_MAPPINGS.get(star_amount)
-                            break
-                elif payment_type == "ton":
-                    # Для TON ищем в последних 3 каналах  
-                    for ton_amount in [50, 100, 150]:
-                        if amount == ton_amount:
-                            channel_id = self.CHANNEL_MAPPINGS.get(ton_amount)
-                            break
-                
-                if not channel_id:
-                    logger.warning(f"⚠️ Канал не найден для {payment_type} {amount}")
-                    return False
-                
-                # Создаем временную ссылку
-                invite_link = await self.application.bot.create_chat_invite_link(
-                    chat_id=channel_id,
-                    member_limit=1,  # Одноразовая ссылка
-                    expire_date=int(time.time()) + 86400  # 24 часа
-                )
-                
-                # Отправляем ссылку пользователю
-                message_text = f"""
-🎉 **ДОСТУП К КАНАЛУ ПОЛУЧЕН!**
-
-✅ Платеж подтвержден: {payment_type.upper()} {amount}
-🔗 Временная ссылка (действует 24 часа): {invite_link.invite_link}
-
-⚠️ **Важно:** Ссылка работает только один раз!
-"""
-                
-                await self.application.bot.send_message(
-                    chat_id=user_id,
-                    text=message_text,
-                    parse_mode='Markdown'
-                )
-                
-                logger.info(f"✅ Ссылка на канал {channel_id} отправлена пользователю {user_id}")
-                return True
-                
-            except Exception as e:
-                logger.error(f"❌ Ошибка отправки ссылки канала: {e}")
-                return False
-
-        # Добавляем функции к классу
-        self.get_channel_info_command = get_channel_info_command.__get__(self)
-        self.get_channel_id_command = get_channel_id_command.__get__(self)
-        self.send_channel_access = send_channel_access.__get__(self)
-        self.CHANNEL_MAPPINGS = CHANNEL_MAPPINGS
-
-        # =========================
-        # СИСТЕМА КАНАЛОВ - КОНЕЦ  
-        # =========================
 
     async def run(self):
         """Запуск бота с асинхронной базой данных"""
