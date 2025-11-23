@@ -25,6 +25,17 @@ class Config:
         # ИСПРАВЛЕНО: STARS_USERNAME для оплаты звездочками
         self.STARS_USERNAME = os.getenv('STARS_USERNAME', 'pingvinchik_liza')
         
+        # ССЫЛКИ НА ПРИВАТНЫЕ КАНАЛЫ ДЛЯ ПОДПИСОК - ИСПРАВЛЕНО
+        self.SUBSCRIPTION_LINKS = {
+            "25_stars": os.getenv('LINK_25_STARS', 'https://t.me/PassiveNFT_Private?start=25stars'),
+            "50_stars": os.getenv('LINK_50_STARS', 'https://t.me/PassiveNFT_Private?start=50stars'),
+            "75_stars": os.getenv('LINK_75_STARS', 'https://t.me/PassiveNFT_Private?start=75stars'),
+            "100_stars": os.getenv('LINK_100_STARS', 'https://t.me/PassiveNFT_Private?start=100stars'),
+            "150_people": os.getenv('LINK_150_PEOPLE', 'https://t.me/PassiveNFT_Private?start=150people'),
+            "100_people": os.getenv('LINK_100_PEOPLE', 'https://t.me/PassiveNFT_Private?start=100people'),
+            "50_people": os.getenv('LINK_50_PEOPLE', 'https://t.me/PassiveNFT_Private?start=50people')
+        }
+        
         # ИСПРАВЛЕННЫЕ планы подписок с правильными типами
         self.SUBSCRIPTION_PLANS = [
             {
