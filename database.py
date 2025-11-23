@@ -85,8 +85,20 @@ class AsyncDatabaseManager:
                     )
                 """)
                 
+                # НОВАЯ ТАБЛИЦА ДЛЯ СИСТЕМЫ ПОДТВЕРЖДЕНИЯ ОПЛАТЫ
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS confirmation_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        admin_id INTEGER NOT NULL,
+                        subscription_type TEXT NOT NULL,
+                        username TEXT NOT NULL,
+                        link_id TEXT NOT NULL UNIQUE,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
                 await db.commit()
-                logger.info("✅ Асинхронная база данных инициализирована")
+                logger.info("✅ Асинхронная база данных инициализирована с системой подтверждения оплаты")
     
     async def get_or_create_user(self, user_id: int, username: str = "", first_name: str = "", last_name: str = "") -> str:
         """Получение или создание пользователя с реферальным кодом"""
@@ -385,6 +397,126 @@ class AsyncDatabaseManager:
         except Exception as e:
             logger.error(f"❌ Ошибка добавления подписки: {e}")
             return False
+    
+    # ===== МЕТОДЫ ДЛЯ СИСТЕМЫ ПОДТВЕРЖДЕНИЯ ОПЛАТЫ =====
+    
+    async def save_confirmation_log(self, log_data: Dict):
+        """Сохранение лога подтверждения оплаты"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    await db.execute("""
+                        INSERT INTO confirmation_logs (admin_id, subscription_type, username, link_id)
+                        VALUES (?, ?, ?, ?)
+                    """, (
+                        log_data.get('admin_id'),
+                        log_data.get('subscription_type'),
+                        log_data.get('username'),
+                        log_data.get('link_id')
+                    ))
+                    await db.commit()
+                    logger.info(f"📝 Лог подтверждения сохранен: {log_data.get('username')}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения лога подтверждения: {e}")
+            raise e
+    
+    async def get_recent_confirmation_logs(self, limit: int = 10) -> List[Dict]:
+        """Получение последних логов подтверждений"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    cursor = await db.execute("""
+                        SELECT admin_id, subscription_type, username, link_id, timestamp
+                        FROM confirmation_logs
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    """, (limit,))
+                    
+                    rows = await cursor.fetchall()
+                    await cursor.close()
+                    
+                    logs = []
+                    for row in rows:
+                        logs.append({
+                            'admin_id': row[0],
+                            'subscription_type': row[1],
+                            'username': row[2],
+                            'link_id': row[3],
+                            'timestamp': row[4]
+                        })
+                    
+                    logger.info(f"📊 Получено {len(logs)} логов подтверждений")
+                    return logs
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения логов подтверждений: {e}")
+            return []
+    
+    async def get_confirmation_stats(self) -> Dict:
+        """Получение статистики подтверждений"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    # Общая статистика
+                    cursor = await db.execute("SELECT COUNT(*) FROM confirmation_logs")
+                    total = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения сегодня
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM confirmation_logs 
+                        WHERE DATE(timestamp) = DATE('now')
+                    """)
+                    today = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения за неделю
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM confirmation_logs 
+                        WHERE timestamp >= datetime('now', '-7 days')
+                    """)
+                    week = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Самая популярная подписка
+                    cursor = await db.execute("""
+                        SELECT subscription_type, COUNT(*) as count
+                        FROM confirmation_logs
+                        GROUP BY subscription_type
+                        ORDER BY count DESC
+                        LIMIT 1
+                    """)
+                    popular = await cursor.fetchone()
+                    await cursor.close()
+                    
+                    popular_subscription = "нет данных"
+                    if popular:
+                        subscription_names = {
+                            "25_stars": "⭐ 25 звезд",
+                            "50_stars": "⭐ 50 звезд", 
+                            "75_stars": "⭐ 75 звезд",
+                            "100_stars": "⭐ 100 звезд",
+                            "150_ton": "💎 150 TON",
+                            "100_ton": "💎 100 TON",
+                            "50_ton": "💎 50 TON"
+                        }
+                        display_name = subscription_names.get(popular[0], popular[0])
+                        popular_subscription = f"{display_name} ({popular[1]} раз)"
+                    
+                    stats = {
+                        'total': total,
+                        'today': today,
+                        'week': week,
+                        'popular_subscription': popular_subscription
+                    }
+                    
+                    logger.info(f"📈 Статистика подтверждений: {stats}")
+                    return stats
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики подтверждений: {e}")
+            return {}
     
     async def close(self):
         """Корректное закрытие соединения с базой данных"""
