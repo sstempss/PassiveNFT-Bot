@@ -1,11 +1,12 @@
 """
-Конфигурационный файл для PassiveNFT Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ С РЕАЛЬНЫМИ КАНАЛ ID
+Конфигурационный файл для PassiveNFT Bot - ПОЛНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
 ИСПРАВЛЕНИЯ:
 - Приведены в соответствие типы подписок для реферальной системы
 - Исправлены цены подписок
 - Настроена правильная работа с базой данных
 - ДОБАВЛЕНЫ РЕАЛЬНЫЕ КАНАЛ ID вместо placeholder
 - ДОБАВЛЕНЫ TON_CHANNEL_MAPPINGS для каналов TON подписок
+- ДОБАВЛЕНЫ PRIVATE_CHANNEL_LINKS с реальными пригласительными ссылками
 """
 import os
 
@@ -24,6 +25,18 @@ class Config:
         
         # ИСПРАВЛЕНО: STARS_USERNAME для оплаты звездочками
         self.STARS_USERNAME = os.getenv('STARS_USERNAME', 'pingvinchik_liza')
+        
+        # 🔥 РЕАЛЬНЫЕ ПРИГЛАСИТЕЛЬНЫЕ ССЫЛКИ ДЛЯ ПОДПИСОК
+        # Однократные ссылки для автоматической отправки пользователям
+        self.PRIVATE_CHANNEL_LINKS = {
+            "25_stars": "https://t.me/+xLVbmqzc3Dk2NWM6",
+            "50_stars": "https://t.me/+uxH6Ot8Kyu4wZDk6", 
+            "75_stars": "https://t.me/+diQh7MowVhIwYzVi",
+            "100_stars": "https://t.me/+6XnGRwJd8rY2ZGUy",
+            "150_ton": "https://t.me/+4BhdYzF2U65hOTIy",
+            "100_ton": "https://t.me/+O7KaTknXPDVlMjY6",
+            "50_ton": "https://t.me/+LaQZfJHeQPcyNjUy"
+        }
         
         # ССЫЛКИ НА ПРИВАТНЫЕ КАНАЛЫ ДЛЯ ПОДПИСОК - ИСПРАВЛЕНО
         self.SUBSCRIPTION_LINKS = {
@@ -231,3 +244,7 @@ for stars, channel_id in config.CHANNEL_MAPPINGS.items():
 print("💎 TON подписки:")
 for users, channel_id in config.TON_CHANNEL_MAPPINGS.items():
     print(f"   {users} пользователей → {channel_id}")
+
+print("🔗 PRIVATE_CHANNEL_LINKS настроены:")
+for subscription_type, link in config.PRIVATE_CHANNEL_LINKS.items():
+    print(f"   {subscription_type} → {link}")
