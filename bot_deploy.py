@@ -342,6 +342,15 @@ class PassiveNFTBot:
         self.config = config
         self.database = AsyncDatabaseManager()  # Асинхронная база данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
         self.application = None
+        
+        # СИСТЕМА ПОДТВЕРЖДЕНИЯ ОПЛАТЫ - ИНИЦИАЛИЗАЦИЯ
+        self.used_links = set()  # Множество использованных ссылок
+        self.confirmation_queue = {}  # Очередь ожидающих подтверждений
+        
+        # Ссылки на приватные каналы по типам подписок (из конфига)
+        self.subscription_links = self.config.SUBSCRIPTION_LINKS
+        
+        # Настройка приложения
         self.setup_telegram_application()
 
     def setup_telegram_application(self):
@@ -368,6 +377,12 @@ class PassiveNFTBot:
             self.application.add_handler(CommandHandler("get_channel_id", self.get_channel_id_command))
             self.application.add_handler(CommandHandler("testcmd", self.testcmd_command))
             
+            # СИСТЕМА ПОДТВЕРЖДЕНИЯ ОПЛАТЫ
+            self.application.add_handler(CommandHandler("confirmpay", self.confirmpay_command))
+            self.application.add_handler(CallbackQueryHandler(self.confirmpay_subscription_type_callback, pattern="^confirmpay_type_"))
+            self.application.add_handler(CallbackQueryHandler(self.confirmpay_history_callback, pattern="^confirmpay_history$"))
+            self.application.add_handler(CallbackQueryHandler(self.confirmpay_stats_callback, pattern="^confirmpay_stats$"))
+            
             # Обработчики подписок
             self.application.add_handler(CallbackQueryHandler(self.subscription_callback, pattern="^subscription$"))
             self.application.add_handler(CallbackQueryHandler(self.select_stars_callback, pattern="^select_stars$"))
@@ -390,6 +405,7 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.referral_stats_callback, pattern="^referral_stats$"))
             self.application.add_handler(CallbackQueryHandler(self.copy_ton_callback, pattern="^copy_ton_"))
             self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
+            self.application.add_handler(CallbackQueryHandler(self.confirmpay_back_callback, pattern="^confirmpay_back$"))
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
             logger.info("Telegram приложение настроено")
@@ -675,6 +691,433 @@ ID: {user.id}
             logger.error(f"❌ Ошибка в confirm_payment_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+
+    # ===== СИСТЕМА ПОДТВЕРЖДЕНИЯ ОПЛАТЫ =====
+    
+    def generate_secure_link_id(self, length=16):
+        """Генерация уникального ID для одноразовой ссылки"""
+        import secrets
+        import string
+        alphabet = string.ascii_letters + string.digits
+        return ''.join(secrets.choice(alphabet) for _ in range(length))
+    
+    def validate_username(self, username: str) -> bool:
+        """Проверка валидности Telegram username"""
+        if not username or len(username) < 5 or len(username) > 32:
+            return False
+        
+        # Telegram username может содержать: буквы, цифры, подчеркивания
+        # Не может начинаться с подчеркивания
+        import re
+        pattern = r'^[a-zA-Z][a-zA-Z0-9_]*$'
+        return bool(re.match(pattern, username))
+    
+    async def save_confirmation_log(self, admin_id: int, subscription_type: str, username: str, link_id: str):
+        """Сохранение лога подтверждения в базу данных"""
+        try:
+            await self.database.save_confirmation_log({
+                'admin_id': admin_id,
+                'subscription_type': subscription_type,
+                'username': username,
+                'link_id': link_id,
+                'timestamp': datetime.now().isoformat()
+            })
+        except Exception as e:
+            logger.error(f"Ошибка сохранения лога подтверждения: {e}")
+    
+    async def confirmpay_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /confirmpay - главное меню подтверждения оплаты"""
+        logger.info(f"КОМАНДА /confirmpay от пользователя {update.effective_user.id}")
+        
+        # Проверка прав администратора
+        if update.effective_user.id not in self.config.ADMIN_USER_IDS:
+            await update.message.reply_text("❌ Доступ запрещен. Только для администраторов.")
+            return
+        
+        try:
+            # Меню выбора типа подписки
+            keyboard = [
+                [
+                    InlineKeyboardButton("⭐ 25 звезд", callback_data="confirmpay_type_25_stars"),
+                    InlineKeyboardButton("⭐ 50 звезд", callback_data="confirmpay_type_50_stars")
+                ],
+                [
+                    InlineKeyboardButton("⭐ 75 звезд", callback_data="confirmpay_type_75_stars"),
+                    InlineKeyboardButton("⭐ 100 звезд", callback_data="confirmpay_type_100_stars")
+                ],
+                [
+                    InlineKeyboardButton("💎 150 TON", callback_data="confirmpay_type_150_ton"),
+                    InlineKeyboardButton("💎 100 TON", callback_data="confirmpay_type_100_ton")
+                ],
+                [
+                    InlineKeyboardButton("💎 50 TON", callback_data="confirmpay_type_50_ton")
+                ],
+                [
+                    InlineKeyboardButton("📊 История подтверждений", callback_data="confirmpay_history"),
+                    InlineKeyboardButton("📈 Статистика", callback_data="confirmpay_stats")
+                ]
+            ]
+            
+            message_text = """👨‍💼 **МЕНЕДЖЕРСКАЯ ПАНЕЛЬ ПОДТВЕРЖДЕНИЯ ОПЛАТЫ**
+
+Выберите тип подписки для подтверждения:
+
+⭐ **ЗВЕЗДОЧКИ:** 25, 50, 75, 100
+💎 **TON:** 150, 100, 50
+
+📋 После выбора типа подписки:
+1. Введите username пользователя
+2. Система автоматически отправит одноразовую ссылку
+3. Пользователь получит уведомление о подтверждении
+
+⚡ Дополнительные функции: История и Статистика
+"""
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
+            
+            logger.info(f"✅ /confirmpay меню показано пользователю {update.effective_user.id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_command: {e}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+    
+    async def confirmpay_subscription_type_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик выбора типа подписки для подтверждения"""
+        query = update.callback_query
+        await query.answer()
+        
+        if update.effective_user.id not in self.config.ADMIN_USER_IDS:
+            await query.edit_message_text("❌ Доступ запрещен.")
+            return
+        
+        try:
+            # Извлекаем тип подписки из callback_data
+            subscription_type = query.data.replace("confirmpay_type_", "")
+            
+            # Определяем отображаемое название
+            subscription_names = {
+                "25_stars": "⭐ 25 звезд",
+                "50_stars": "⭐ 50 звезд", 
+                "75_stars": "⭐ 75 звезд",
+                "100_stars": "⭐ 100 звезд",
+                "150_ton": "💎 150 TON",
+                "100_ton": "💎 100 TON",
+                "50_ton": "💎 50 TON"
+            }
+            
+            display_name = subscription_names.get(subscription_type, subscription_type)
+            
+            # Сохраняем выбранный тип в очереди ожидания
+            self.confirmation_queue[update.effective_user.id] = {
+                'subscription_type': subscription_type,
+                'step': 'waiting_username'
+            }
+            
+            # Меню для ввода username
+            keyboard = [
+                [InlineKeyboardButton("🔙 Отмена", callback_data="confirmpay_back")]
+            ]
+            
+            message_text = f"""👨‍💼 **ВЫБРАНА ПОДПИСКА: {display_name}**
+
+📝 **Следующий шаг:** Введите username пользователя
+
+Формат: `@username` или просто `username`
+(например: `john_doe` или `@john_doe`)
+
+💡 **Важно:**
+- Username должен быть действительным пользователем Telegram
+- Система автоматически отправит ссылку пользователю
+- Ссылка будет одноразовой и уникальной
+"""
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
+            
+            logger.info(f"✅ Выбран тип подписки {subscription_type} пользователем {update.effective_user.id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_subscription_type_callback: {e}")
+            await query.edit_message_text("❌ Произошла ошибка. Попробуйте позже.")
+    
+    async def confirmpay_back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик возврата в главное меню /confirmpay"""
+        query = update.callback_query
+        await query.answer()
+        
+        if update.effective_user.id not in self.config.ADMIN_USER_IDS:
+            await query.edit_message_text("❌ Доступ запрещен.")
+            return
+        
+        try:
+            # Очищаем очередь ожидания
+            if update.effective_user.id in self.confirmation_queue:
+                del self.confirmation_queue[update.effective_user.id]
+            
+            # Показываем главное меню
+            await self.confirmpay_command(update, context)
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_back_callback: {e}")
+            await query.edit_message_text("❌ Произошла ошибка. Попробуйте позже.")
+    
+    async def confirmpay_history_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик показа истории подтверждений"""
+        query = update.callback_query
+        await query.answer()
+        
+        if update.effective_user.id not in self.config.ADMIN_USER_IDS:
+            await query.edit_message_text("❌ Доступ запрещен.")
+            return
+        
+        try:
+            # Получаем историю из базы данных
+            recent_logs = await self.database.get_recent_confirmation_logs(limit=10)
+            
+            if not recent_logs:
+                message_text = """📊 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ**
+
+📭 История подтверждений пуста.
+Пока что не было подтвержденных оплат.
+"""
+            else:
+                message_text = "📊 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ (последние 10)**\n\n"
+                
+                for log in recent_logs:
+                    timestamp = log.get('timestamp', '')
+                    username = log.get('username', 'неизвестен')
+                    subscription_type = log.get('subscription_type', 'неизвестно')
+                    admin_id = log.get('admin_id', 'неизвестен')
+                    
+                    # Определяем отображаемое название подписки
+                    subscription_names = {
+                        "25_stars": "⭐ 25 звезд",
+                        "50_stars": "⭐ 50 звезд", 
+                        "75_stars": "⭐ 75 звезд",
+                        "100_stars": "⭐ 100 звезд",
+                        "150_ton": "💎 150 TON",
+                        "100_ton": "💎 100 TON",
+                        "50_ton": "💎 50 TON"
+                    }
+                    display_name = subscription_names.get(subscription_type, subscription_type)
+                    
+                    message_text += f"⏰ {timestamp[:16]}\n"
+                    message_text += f"👤 @{username}\n"
+                    message_text += f"📦 {display_name}\n"
+                    message_text += f"👨‍💼 Админ: {admin_id}\n\n"
+            
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_history_callback: {e}")
+            await query.edit_message_text("❌ Ошибка загрузки истории. Попробуйте позже.")
+    
+    async def confirmpay_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик показа статистики"""
+        query = update.callback_query
+        await query.answer()
+        
+        if update.effective_user.id not in self.config.ADMIN_USER_IDS:
+            await query.edit_message_text("❌ Доступ запрещен.")
+            return
+        
+        try:
+            # Получаем статистику из базы данных
+            stats = await self.database.get_confirmation_stats()
+            
+            if not stats:
+                message_text = """📈 **СТАТИСТИКА ПОДТВЕРЖДЕНИЙ**
+
+📭 Статистика пока недоступна.
+Подтверждения пока не проводились.
+"""
+            else:
+                total_confirmations = stats.get('total', 0)
+                today_confirmations = stats.get('today', 0)
+                week_confirmations = stats.get('week', 0)
+                popular_subscription = stats.get('popular_subscription', 'нет данных')
+                
+                message_text = f"""📈 **СТАТИСТИКА ПОДТВЕРЖДЕНИЙ**
+
+📊 **Общая статистика:**
+• Всего подтверждений: {total_confirmations}
+• Сегодня: {today_confirmations}
+• За неделю: {week_confirmations}
+
+🏆 **Популярная подписка:**
+{popular_subscription}
+
+📅 **Отчет на:** {datetime.now().strftime('%Y-%m-%d %H:%M')}
+"""
+            
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_stats_callback: {e}")
+            await query.edit_message_text("❌ Ошибка загрузки статистики. Попробуйте позже.")
+    
+    # ===== ОБРАБОТЧИК USERNAME ПОЛЬЗОВАТЕЛЯ =====
+    
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик текстовых сообщений - ОБНОВЛЕН"""
+        logger.info(f"ТЕКСТОВОЕ СООБЩЕНИЕ ПОЛУЧЕНО: '{update.message.text}' от пользователя {update.effective_user.id}")
+        try:
+            message = update.message.text.lower()
+            
+            # ПРОВЕРКА: ОЖИДАЕМ ЛИ МЫ USERNAME ОТ АДМИНА?
+            if (update.effective_user.id in self.confirmation_queue and 
+                self.confirmation_queue[update.effective_user.id]['step'] == 'waiting_username'):
+                await self.handle_username_input(update, context)
+                return
+            
+            # Существующая логика для админских команд
+            if "admin" in message and update.effective_user.id in self.config.ADMIN_USER_IDS:
+                await self.admin_command(update, context)
+            else:
+                await update.message.reply_text(
+                    "🤖 Используйте /start для начала работы"
+                )
+        except Exception as e:
+            logger.error(f"❌ Ошибка в handle_message: {e}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+    
+    async def handle_username_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка ввода username пользователя для подтверждения оплаты"""
+        try:
+            # Получаем данные из очереди ожидания
+            queue_data = self.confirmation_queue.get(update.effective_user.id)
+            if not queue_data:
+                await update.message.reply_text("❌ Ошибка: не найдены данные для обработки.")
+                return
+            
+            subscription_type = queue_data['subscription_type']
+            
+            # Очищаем и валидируем username
+            username = update.message.text.strip()
+            if username.startswith('@'):
+                username = username[1:]  # Убираем @ в начале
+            
+            if not self.validate_username(username):
+                await update.message.reply_text(
+                    "❌ Некорректный username. Используйте только буквы, цифры и подчеркивания.\n"
+                    "Пример: `john_doe` или `@john_doe`"
+                )
+                return
+            
+            # Генерируем уникальный ID ссылки
+            link_id = self.generate_secure_link_id()
+            
+            # Проверяем, что ссылка еще не использовалась
+            if link_id in self.used_links:
+                link_id = self.generate_secure_link_id()  # Генерируем заново
+            
+            # Создаем одноразовую ссылку
+            base_link = self.subscription_links.get(subscription_type, "")
+            secure_link = f"{base_link}&secure={link_id}"
+            
+            # Отправляем ссылку пользователю
+            await self.send_subscription_link_to_user(username, subscription_type, secure_link)
+            
+            # Сохраняем лог подтверждения
+            await self.save_confirmation_log(
+                admin_id=update.effective_user.id,
+                subscription_type=subscription_type,
+                username=username,
+                link_id=link_id
+            )
+            
+            # Отмечаем ссылку как использованную
+            self.used_links.add(link_id)
+            
+            # Очищаем очередь ожидания
+            del self.confirmation_queue[update.effective_user.id]
+            
+            # Отправляем подтверждение админу
+            subscription_names = {
+                "25_stars": "⭐ 25 звезд",
+                "50_stars": "⭐ 50 звезд", 
+                "75_stars": "⭐ 75 звезд",
+                "100_stars": "⭐ 100 звезд",
+                "150_ton": "💎 150 TON",
+                "100_ton": "💎 100 TON",
+                "50_ton": "💎 50 TON"
+            }
+            display_name = subscription_names.get(subscription_type, subscription_type)
+            
+            await update.message.reply_text(
+                f"✅ **ПОДТВЕРЖДЕНИЕ ОТПРАВЛЕНО!**\n\n"
+                f"👤 Пользователь: @{username}\n"
+                f"📦 Подписка: {display_name}\n"
+                f"🔗 Ссылка: {secure_link}\n\n"
+                f"🛡️ **Безопасность:** Ссылка одноразовая и уникальная\n"
+                f"📊 Лог сохранен в базе данных\n\n"
+                f"💡 **Следующее подтверждение:** используйте /confirmpay"
+            )
+            
+            logger.info(f"✅ Подтверждение отправлено @{username} для {subscription_type} админом {update.effective_user.id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка при обработке username: {e}")
+            await update.message.reply_text("❌ Произошла ошибка при обработке. Попробуйте позже.")
+    
+    async def send_subscription_link_to_user(self, username: str, subscription_type: str, secure_link: str):
+        """Отправка ссылки на подписку пользователю"""
+        try:
+            # Определяем отображаемое название подписки
+            subscription_names = {
+                "25_stars": "⭐ 25 звезд",
+                "50_stars": "⭐ 50 звезд", 
+                "75_stars": "⭐ 75 звезд",
+                "100_stars": "⭐ 100 звезд",
+                "150_ton": "💎 150 TON",
+                "100_ton": "💎 100 TON",
+                "50_ton": "💎 50 TON"
+            }
+            display_name = subscription_names.get(subscription_type, subscription_type)
+            
+            # Формируем сообщение для пользователя
+            message_text = f"""🎉 **ОПЛАТА ПОДТВЕРЖДЕНА!**
+
+✅ Ваша подписка на закрытый Telegram-канал успешно активирована!
+
+📦 **Детали подписки:**
+• Тип: {display_name}
+• Статус: ✅ Активирована
+• Ссылка: {secure_link}
+
+🛡️ **Важная информация:**
+• Ссылка является одноразовой - используйте ее немедленно
+• Не передавайте ссылку другим лицам
+• При возникновении проблем обратитесь к менеджеру
+
+🚀 **Добро пожаловать в закрытое сообщество PassiveNFT!**
+
+Если у вас возникли вопросы, свяжитесь с менеджером: @{self.config.MANAGER_USERNAME}
+"""
+            
+            # Отправляем сообщение пользователю
+            await context.bot.send_message(
+                chat_id=f"@{username}",
+                text=message_text,
+                parse_mode='Markdown'
+            )
+            
+            logger.info(f"✅ Ссылка отправлена пользователю @{username}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки ссылки пользователю @{username}: {e}")
+            raise e
 
     async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Подписки' - БЕЗ ЖИРНОГО ТЕКСТА"""
