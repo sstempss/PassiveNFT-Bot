@@ -85,8 +85,45 @@ class AsyncDatabaseManager:
                     )
                 """)
                 
+                # НОВАЯ ТАБЛИЦА ДЛЯ СИСТЕМЫ ПОДТВЕРЖДЕНИЯ ОПЛАТЫ
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS confirmation_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        admin_id INTEGER NOT NULL,
+                        subscription_type TEXT NOT NULL,
+                        username TEXT NOT NULL,
+                        link_id TEXT NOT NULL UNIQUE,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # ТАБЛИЦА ДЛЯ ОЧЕРЕДИ ОТЛОЖЕННЫХ СООБЩЕНИЙ
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS pending_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        subscription_type TEXT NOT NULL,
+                        invite_link TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # ТАБЛИЦА ДЛЯ ПОДТВЕРЖДЕНИЙ ОПЛАТЫ (КОТОРАЯ ИСПОЛЬЗУЕТСЯ В БОТЕ)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS payment_confirmations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        username TEXT NOT NULL,
+                        subscription_type TEXT NOT NULL,
+                        confirmed_by INTEGER NOT NULL,
+                        invite_link TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
                 await db.commit()
-                logger.info("✅ Асинхронная база данных инициализирована")
+                logger.info("✅ Асинхронная база данных инициализирована с системой подтверждения оплаты")
     
     async def get_or_create_user(self, user_id: int, username: str = "", first_name: str = "", last_name: str = "") -> str:
         """Получение или создание пользователя с реферальным кодом"""
@@ -385,6 +422,280 @@ class AsyncDatabaseManager:
         except Exception as e:
             logger.error(f"❌ Ошибка добавления подписки: {e}")
             return False
+    
+    # ===== МЕТОДЫ ДЛЯ СИСТЕМЫ ПОДТВЕРЖДЕНИЯ ОПЛАТЫ =====
+    
+    async def save_confirmation_log(self, log_data: Dict):
+        """Сохранение лога подтверждения оплаты"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    await db.execute("""
+                        INSERT INTO confirmation_logs (admin_id, subscription_type, username, link_id)
+                        VALUES (?, ?, ?, ?)
+                    """, (
+                        log_data.get('admin_id'),
+                        log_data.get('subscription_type'),
+                        log_data.get('username'),
+                        log_data.get('link_id')
+                    ))
+                    await db.commit()
+                    logger.info(f"📝 Лог подтверждения сохранен: {log_data.get('username')}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения лога подтверждения: {e}")
+            raise e
+    
+    async def get_recent_confirmation_logs(self, limit: int = 10) -> List[Dict]:
+        """Получение последних логов подтверждений"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    cursor = await db.execute("""
+                        SELECT admin_id, subscription_type, username, link_id, timestamp
+                        FROM confirmation_logs
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    """, (limit,))
+                    
+                    rows = await cursor.fetchall()
+                    await cursor.close()
+                    
+                    logs = []
+                    for row in rows:
+                        logs.append({
+                            'admin_id': row[0],
+                            'subscription_type': row[1],
+                            'username': row[2],
+                            'link_id': row[3],
+                            'timestamp': row[4]
+                        })
+                    
+                    logger.info(f"📊 Получено {len(logs)} логов подтверждений")
+                    return logs
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения логов подтверждений: {e}")
+            return []
+    
+    async def get_confirmation_stats(self) -> Dict:
+        """Получение статистики подтверждений"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    # Общая статистика
+                    cursor = await db.execute("SELECT COUNT(*) FROM confirmation_logs")
+                    total = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения сегодня
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM confirmation_logs 
+                        WHERE DATE(timestamp) = DATE('now')
+                    """)
+                    today = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения за неделю
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM confirmation_logs 
+                        WHERE timestamp >= datetime('now', '-7 days')
+                    """)
+                    week = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Самая популярная подписка
+                    cursor = await db.execute("""
+                        SELECT subscription_type, COUNT(*) as count
+                        FROM confirmation_logs
+                        GROUP BY subscription_type
+                        ORDER BY count DESC
+                        LIMIT 1
+                    """)
+                    popular = await cursor.fetchone()
+                    await cursor.close()
+                    
+                    popular_subscription = "нет данных"
+                    if popular:
+                        subscription_names = {
+                            "25_stars": "⭐ 25 звезд",
+                            "50_stars": "⭐ 50 звезд", 
+                            "75_stars": "⭐ 75 звезд",
+                            "100_stars": "⭐ 100 звезд",
+                            "150_ton": "💎 150 TON",
+                            "100_ton": "💎 100 TON",
+                            "50_ton": "💎 50 TON"
+                        }
+                        display_name = subscription_names.get(popular[0], popular[0])
+                        popular_subscription = f"{display_name} ({popular[1]} раз)"
+                    
+                    stats = {
+                        'total': total,
+                        'today': today,
+                        'week': week,
+                        'popular_subscription': popular_subscription
+                    }
+                    
+                    logger.info(f"📈 Статистика подтверждений: {stats}")
+                    return stats
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики подтверждений: {e}")
+            return {}
+    
+    # ==================== НОВЫЕ МЕТОДЫ ДЛЯ СИСТЕМЫ ПОДТВЕРЖДЕНИЯ ОПЛАТЫ ====================
+    
+    async def save_payment_confirmation(self, user_id: int, username: str, subscription_type: str, confirmed_by: int, invite_link: str):
+        """Сохранение подтверждения оплаты"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    await db.execute("""
+                        INSERT INTO payment_confirmations 
+                        (user_id, username, subscription_type, confirmed_by, invite_link)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (user_id, username, subscription_type, confirmed_by, invite_link))
+                    
+                    await db.commit()
+                    logger.info(f"✅ Подтверждение сохранено для @{username}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения подтверждения: {e}")
+            raise e
+    
+    async def get_confirmation_history(self, limit: int = 10) -> List[Dict]:
+        """Получение истории подтверждений"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    cursor = await db.execute("""
+                        SELECT * FROM payment_confirmations
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                    """, (limit,))
+                    
+                    rows = await cursor.fetchall()
+                    await cursor.close()
+                    
+                    history = []
+                    columns = ['id', 'user_id', 'username', 'subscription_type', 'confirmed_by', 'invite_link', 'created_at']
+                    
+                    for row in rows:
+                        record = dict(zip(columns, row))
+                        history.append(record)
+                    
+                    logger.info(f"📊 Получена история подтверждений: {len(history)} записей")
+                    return history
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения истории подтверждений: {e}")
+            return []
+    
+    async def get_confirmation_stats(self) -> Dict:
+        """Получение статистики подтверждений (исправленная версия)"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    # Общая статистика
+                    cursor = await db.execute("SELECT COUNT(*) FROM payment_confirmations")
+                    total_confirmations = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения сегодня
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM payment_confirmations 
+                        WHERE DATE(created_at) = DATE('now')
+                    """)
+                    today_confirmations = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения за неделю
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM payment_confirmations 
+                        WHERE created_at >= datetime('now', '-7 days')
+                    """)
+                    week_confirmations = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения за месяц
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM payment_confirmations 
+                        WHERE created_at >= datetime('now', '-30 days')
+                    """)
+                    month_confirmations = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Статистика по типам подписок
+                    cursor = await db.execute("""
+                        SELECT subscription_type, COUNT(*) as count
+                        FROM payment_confirmations
+                        GROUP BY subscription_type
+                        ORDER BY count DESC
+                    """)
+                    by_subscription = await cursor.fetchall()
+                    await cursor.close()
+                    
+                    # Формируем словарь статистики
+                    stats = {
+                        'total_confirmations': total_confirmations,
+                        'today_confirmations': today_confirmations,
+                        'week_confirmations': week_confirmations,
+                        'month_confirmations': month_confirmations,
+                        'by_subscription_type': dict(by_subscription)
+                    }
+                    
+                    logger.info(f"📈 Статистика подтверждений обновлена: {stats}")
+                    return stats
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики подтверждений: {e}")
+            return {
+                'total_confirmations': 0,
+                'today_confirmations': 0,
+                'week_confirmations': 0,
+                'month_confirmations': 0,
+                'by_subscription_type': {}
+            }
+    
+    async def save_pending_message(self, username: str, message: str, subscription_type: str, invite_link: str):
+        """Сохранение отложенного сообщения для пользователя"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    await db.execute("""
+                        INSERT INTO pending_messages 
+                        (username, message, subscription_type, invite_link)
+                        VALUES (?, ?, ?, ?)
+                    """, (username, message, subscription_type, invite_link))
+                    
+                    await db.commit()
+                    logger.info(f"📬 Отложенное сообщение сохранено для @{username}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения отложенного сообщения: {e}")
+            raise e
+    
+    async def get_user_by_username(self, username: str) -> Optional[Dict]:
+        """Получение пользователя по username"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    cursor = await db.execute("""
+                        SELECT * FROM users WHERE username = ?
+                    """, (username,))
+                    
+                    row = await cursor.fetchone()
+                    await cursor.close()
+                    
+                    if row:
+                        columns = ['id', 'username', 'first_name', 'last_name', 'created_at', 'referral_code']
+                        return dict(zip(columns, row))
+                    
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения пользователя @{username}: {e}")
+            return None
     
     async def close(self):
         """Корректное закрытие соединения с базой данных"""
