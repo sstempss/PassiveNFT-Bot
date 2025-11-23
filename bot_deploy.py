@@ -423,17 +423,30 @@ class PassiveNFTBot:
             try:
                 # Подготавливаем данные для форматирования
                 channel_data = {}
+                ton_channel_data = {}
+                
+                # Данные для Stars платежей
                 for stars, channel_id in self.config.CHANNEL_MAPPINGS.items():
                     channel_data[f'stars_{stars}'] = str(channel_id)
                 
-                # Добавляем недостающие ключи с дефолтными значениями
-                for stars in [25, 50, 75, 100, 150, 200, 250]:
+                # Данные для TON платежей
+                for users, channel_id in self.config.TON_CHANNEL_MAPPINGS.items():
+                    ton_channel_data[f'ton_{users}'] = str(channel_id)
+                
+                # Добавляем недостающие ключи с дефолтными значениями для Stars
+                for stars in [25, 50, 75, 100]:
                     if f'stars_{stars}' not in channel_data:
                         channel_data[f'stars_{stars}'] = "НЕ НАСТРОЕН"
                 
-                logger.info(f"Данные для форматирования: {channel_data}")
+                # Добавляем недостающие ключи с дефолтными значениями для TON
+                for users in [50, 100, 150]:
+                    if f'ton_{users}' not in ton_channel_data:
+                        ton_channel_data[f'ton_{users}'] = "НЕ НАСТРОЕН"
                 
-                # ИСПРАВЛЕНО: Улучшенное безопасное форматирование
+                logger.info(f"Данные Stars для форматирования: {channel_data}")
+                logger.info(f"Данные TON для форматирования: {ton_channel_data}")
+                
+                # ИСПРАВЛЕНО: Улучшенное безопасное форматирование с разделением Stars и TON
                 info_text = safe_format_user_data(
                     """
 **ИНФОРМАЦИЯ О СИСТЕМЕ КАНАЛОВ**
@@ -443,21 +456,26 @@ class PassiveNFTBot:
 50 звезд → ID: `{stars_50}`
 75 звезд → ID: `{stars_75}`
 100 звезд → ID: `{stars_100}`
-150 звезд → ID: `{stars_150}`
-200 звезд → ID: `{stars_200}`
-250 звезд → ID: `{stars_250}`
+
+**TON платежи:**
+150 тон → ID: `{ton_150}`
+100 тон → ID: `{ton_100}`
+50 тон → ID: `{ton_50}`
 
 **Инструкции:**
 1. Замените placeholder ID на реальные ID каналов
 2. Добавьте бота в каждый канал как администратора
 3. Используйте /get_channel_id для получения реальных ID
-4. Обновите CHANNEL_MAPPINGS после получения реальных ID
+4. Обновите CHANNEL_MAPPINGS и TON_CHANNEL_MAPPINGS после получения реальных ID
 
 **Диагностика:**
-CHANNEL_MAPPINGS: {diagnostic_info}
+CHANNEL_MAPPINGS: {diagnostic_stars}
+TON_CHANNEL_MAPPINGS: {diagnostic_ton}
                     """,
                     **channel_data,
-                    diagnostic_info=str(self.config.CHANNEL_MAPPINGS)
+                    **ton_channel_data,
+                    diagnostic_stars=str(self.config.CHANNEL_MAPPINGS),
+                    diagnostic_ton=str(self.config.TON_CHANNEL_MAPPINGS)
                 )
                 
                 await update.message.reply_text(info_text, parse_mode='Markdown')
@@ -469,12 +487,16 @@ CHANNEL_MAPPINGS: {diagnostic_info}
                 diagnostic_text = f"""
 **ОШИБКА ФОРМАТИРОВАНИЯ**
 
-**CHANNEL_MAPPINGS:** {self.config.CHANNEL_MAPPINGS}
+**CHANNEL_MAPPINGS (Stars):** {self.config.CHANNEL_MAPPINGS}
+**TON_CHANNEL_MAPPINGS (TON):** {self.config.TON_CHANNEL_MAPPINGS}
 
 **Детали ошибки:** {str(format_error)}
 
-**Типы данных:**
+**Типы данных Stars:**
 {[(k, type(v), str(v)) for k, v in self.config.CHANNEL_MAPPINGS.items()]}
+
+**Типы данных TON:**
+{[(k, type(v), str(v)) for k, v in self.config.TON_CHANNEL_MAPPINGS.items()]}
                 """
                 await update.message.reply_text(diagnostic_text, parse_mode='Markdown')
             
