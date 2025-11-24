@@ -375,6 +375,9 @@ class PassiveNFTBot:
         self.application = None
         # ДОБАВЛЕНО: Словарь для хранения ожидающих ввод username для /confirmpay
         self.confirmpay_pending_users = {}  # {user_id: subscription_type}
+        
+        # ДОБАВЛЕНО: История подтверждений для реальной работы статистики
+        self.confirmation_history = []  # Список подтверждений [{username, subscription_type, admin_id, timestamp}]
         self.setup_telegram_application()
 
     def setup_telegram_application(self):
@@ -852,6 +855,34 @@ ID: {user.id}
 
             await query.message.edit_text(confirmation_text)
             
+            # НОВОЕ: Отправляем ссылку пользователю
+            try:
+                # Получаем пользователя по username
+                chat = await self.application.bot.get_chat(f"@{username}")
+                
+                user_message = f"✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
+
+" \
+                              f"Поздравляем! Ваша подписка на {subscription_type} подтверждена администратором.\n\n" \
+                              f"Пригласительная ссылка на закрытый канал:\n" \
+                              f"🔗 {invite_link}\n\n" \
+                              f"Спасибо за вашу подписку!"
+                
+                await self.application.bot.send_message(
+                    chat_id=chat.id,
+                    text=user_message
+                )
+                
+                logger.info(f"✅ Ссылка успешно отправлена пользователю @{username}")
+                
+            except Exception as send_error:
+                logger.error(f"❌ Не удалось отправить ссылку пользователю @{username}: {send_error}")
+                # Отправляем сообщение админу о проблеме
+                await query.message.reply_text(
+                    f"⚠️ ПРЕДУПРЕЖДЕНИЕ: Не удалось отправить ссылку пользователю @{username}. " \
+                    f"Отправьте ссылку вручную:\n{invite_link}"
+                )
+            
             # Сохраняем в историю подтверждений (база данных)
             await self.save_confirmation_to_history(username, subscription_type, query.from_user.id)
             
@@ -906,12 +937,17 @@ ID: {user.id}
     async def save_confirmation_to_history(self, username: str, subscription_type: str, admin_id: int):
         """Сохранение подтверждения в историю - ИСПРАВЛЕНО"""
         try:
-            # Здесь можно добавить сохранение в базу данных
-            logger.info(f"История: @{username} - {subscription_type} от админа {admin_id}")
+            # Сохраняем в реальную структуру данных
+            confirmation_data = {
+                'username': username,
+                'subscription_type': subscription_type,
+                'admin_id': admin_id,
+                'timestamp': datetime.now()
+            }
             
-            # Для демонстрации пока сохраняем в памяти (в реальном проекте - в БД)
-            confirmation_time = datetime.now()
-            logger.info(f"Подтверждение сохранено: {username}, {subscription_type}, {confirmation_time}")
+            self.confirmation_history.append(confirmation_data)
+            logger.info(f"История: @{username} - {subscription_type} от админа {admin_id}")
+            logger.info(f"Подтверждение сохранено в историю. Всего подтверждений: {len(self.confirmation_history)}")
             
         except Exception as e:
             logger.error(f"Ошибка сохранения в историю: {e}")
@@ -958,28 +994,39 @@ ID: {user.id}
 
     async def get_confirmation_history(self) -> list:
         """Получение истории подтверждений - ИСПРАВЛЕНО"""
-        # В реальном проекте это будет запрос к базе данных
-        # Пока возвращаем тестовые данные
-        return [
-            {
-                'username': 'testuser1',
-                'subscription_type': '25_stars',
-                'time': '2 часа назад',
-                'date': datetime.now() - timedelta(hours=2)
-            },
-            {
-                'username': 'testuser2', 
-                'subscription_type': '100_ton',
-                'time': '5 часов назад',
-                'date': datetime.now() - timedelta(hours=5)
-            },
-            {
-                'username': 'testuser3',
-                'subscription_type': '50_stars', 
-                'time': '1 день назад',
-                'date': datetime.now() - timedelta(days=1)
-            }
-        ]
+        if not self.confirmation_history:
+            return []
+        
+        # Форматируем реальные данные для отображения
+        formatted_history = []
+        for confirmation in self.confirmation_history:
+            # Определяем временной интервал
+            now = datetime.now()
+            timestamp = confirmation['timestamp']
+            delta = now - timestamp
+            
+            if delta.seconds < 60:
+                time_str = "только что"
+            elif delta.seconds < 3600:
+                minutes = delta.seconds // 60
+                time_str = f"{minutes} мин назад"
+            elif delta.days == 0:
+                hours = delta.seconds // 3600
+                time_str = f"{hours} ч назад"
+            elif delta.days == 1:
+                time_str = "вчера"
+            else:
+                time_str = f"{delta.days} дн назад"
+            
+            formatted_history.append({
+                'username': confirmation['username'],
+                'subscription_type': confirmation['subscription_type'],
+                'time': time_str,
+                'date': timestamp
+            })
+        
+        # Возвращаем в обратном порядке (новые первые)
+        return list(reversed(formatted_history))
 
     async def confirmpay_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик просмотра статистики подтверждений - ИСПРАВЛЕНО"""
@@ -991,13 +1038,13 @@ ID: {user.id}
             # Получаем реальную статистику
             stats_data = await self.get_confirmation_stats()
             
-            stats_text = f"""📈 **СТАТИСТИКА ПОДТВЕРЖДЕНИЙ**
+            stats_text = f"""📈 СТАТИСТИКА ПОДТВЕРЖДЕНИЙ
 
-**По типам подписок:**
+По типам подписок:
 ⭐ Stars подписки: {stats_data['stars_count']} ({stats_data['stars_percentage']}%)
 💎 TON подписки: {stats_data['ton_count']} ({stats_data['ton_percentage']}%)
 
-**По суммам:**
+По суммам:
 • 25 звезд: {stats_data['25_stars']}
 • 50 звезд: {stats_data['50_stars']}  
 • 75 звезд: {stats_data['75_stars']}
@@ -1006,12 +1053,12 @@ ID: {user.id}
 • 100 TON: {stats_data['100_ton']}
 • 150 TON: {stats_data['150_ton']}
 
-**Период:** Последние 30 дней"""
+Период: Последние 30 дней"""
 
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await query.message.edit_text(stats_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.message.edit_text(stats_text, reply_markup=reply_markup)
             logger.info(f"✅ Статистика подтверждений показана пользователю {query.from_user.id}")
             
         except Exception as e:
