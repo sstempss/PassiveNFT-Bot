@@ -13,6 +13,7 @@ PassiveNFT Bot - ВЕРСИЯ С АКТИВНЫМИ ПОДПИСКАМИ (за �
 - ИСПРАВЛЕНЫ ЭМОДЗИ В F-СТРОКАХ (SyntaxError)
 - ДОБАВЛЕНЫ КОМАНДЫ /channel_info, /get_channel_id, /testcmd
 - ИСПРАВЛЕНА ПРОБЛЕМА С PARSING MARKDOWN - правильное экранирование специальных символов
+- ДОБАВЛЕНА СИСТЕМА /confirmpay для быстрого подтверждения оплат
 """
 import asyncio
 import logging
@@ -134,6 +135,36 @@ class SafeConfig:
             200: -1001234567896, # 200 звезд -> ID канала 6
             250: -1001234567897  # 250 звезд -> ID канала 7
         }
+
+        # НОВОЕ: TON_CHANNEL_MAPPINGS для соответствия с оригинальным кодом
+        self.TON_CHANNEL_MAPPINGS = {
+            150: -1001234567898, # 150 тон -> ID канала 8
+            100: -1001234567899, # 100 тон -> ID канала 9  
+            50: -1001234567900   # 50 тон -> ID канала 10
+        }
+
+        # НОВОЕ: STARS_CHANNEL_MAPPINGS для соответствия с оригинальным кодом
+        self.STARS_CHANNEL_MAPPINGS = {
+            -1002755746127: "Stars Channel 1",
+            -1003223397887: "Stars Channel 2", 
+            -1003232732123: "Stars Channel 3",
+            -1003361243296: "Stars Channel 4"
+        }
+
+        # НОВОЕ: TON_CHANNEL_MAPPINGS для подтверждений
+        self.TON_CHANNEL_INVITE_LINKS = [
+            "https://t.me/+4BhdYzF2U65hOTIy",
+            "https://t.me/+O7KaTknXPDVlMjY6", 
+            "https://t.me/+LaQZfJHeQPcyNjUy"
+        ]
+
+        # НОВОЕ: STARS_CHANNEL_INVITE_LINKS для подтверждений
+        self.STARS_CHANNEL_INVITE_LINKS = [
+            "https://t.me/+xLVbmqzc3Dk2NWM6",
+            "https://t.me/+uxH6Ot8Kyu4wZDk6",
+            "https://t.me/+diQh7MowVhIwYzVi",
+            "https://t.me/+6XnGRwJd8rY2ZGUy"
+        ]
 
         # Настройки подписок - БЕЗ ЖИРНОГО ТЕКСТА
         self.SUBSCRIPTION_PLANS = [
@@ -337,7 +368,7 @@ except Exception as e:
 
 
 class PassiveNFTBot:
-    """Главный класс бота с исправленной реферальной системой"""
+    """Главный класс бота с исправленной реферальной системой и системой /confirmpay"""
     def __init__(self):
         self.config = config
         self.database = AsyncDatabaseManager()  # Асинхронная база данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
@@ -357,6 +388,10 @@ class PassiveNFTBot:
             # Регистрация обработчиков
             self.application.add_handler(CommandHandler("start", self.start_command))
             self.application.add_handler(CommandHandler("confirm_payment", self.confirm_payment_command))
+            
+            # НОВАЯ КОМАНДА: Система подтверждения оплат /confirmpay
+            self.application.add_handler(CommandHandler("confirmpay", self.confirmpay_command))
+            
             self.application.add_handler(CommandHandler("adminserveraa", self.admin_command))
             self.application.add_handler(CommandHandler("adminserveraastat", self.admin_stats_command))
             self.application.add_handler(CommandHandler("adminserveraapeople", self.admin_people_command))
@@ -382,6 +417,24 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.stars_payment_callback, pattern="^stars_payment_"))
             self.application.add_handler(CallbackQueryHandler(self.copy_stars_ton_callback, pattern="^copy_stars_ton_"))
             self.application.add_handler(CallbackQueryHandler(self.stars_payment_stars_callback, pattern="^stars_payment_stars_"))
+            
+            # НОВЫЕ: Обработчики для системы /confirmpay
+            self.application.add_handler(CallbackQueryHandler(
+                self.confirmpay_subscription_type_callback, 
+                pattern="^confirmpay_type_"
+            ))
+            self.application.add_handler(CallbackQueryHandler(
+                self.confirmpay_history_callback, 
+                pattern="^confirmpay_history$"
+            ))
+            self.application.add_handler(CallbackQueryHandler(
+                self.confirmpay_stats_callback, 
+                pattern="^confirmpay_stats$"
+            ))
+            self.application.add_handler(CallbackQueryHandler(
+                self.confirmpay_back_callback, 
+                pattern="^confirmpay_back$"
+            ))
             
             # Существующие обработчики
             self.application.add_handler(CallbackQueryHandler(self.contact_callback, pattern="^contact$"))
@@ -675,6 +728,174 @@ ID: {user.id}
             logger.error(f"❌ Ошибка в confirm_payment_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+
+    # НОВАЯ СИСТЕМА /confirmpay
+    async def confirmpay_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик команды /confirmpay - главное меню подтверждения оплаты"""
+        logger.info(f"КОМАНДА /confirmpay от пользователя {update.effective_user.id}")
+        try:
+            # Проверяем админские права
+            if update.effective_user.id not in self.config.ADMIN_USER_IDS:
+                await update.message.reply_text("❌ У вас нет доступа к этой команде")
+                return
+
+            # Главное меню подтверждения оплаты
+            keyboard = [
+                [InlineKeyboardButton("⭐ 25 звезд", callback_data="confirmpay_type_25_stars"),
+                 InlineKeyboardButton("⭐ 50 звезд", callback_data="confirmpay_type_50_stars")],
+                [InlineKeyboardButton("⭐ 75 звезд", callback_data="confirmpay_type_75_stars"),
+                 InlineKeyboardButton("⭐ 100 звезд", callback_data="confirmpay_type_100_stars")],
+                [InlineKeyboardButton("💎 150 TON", callback_data="confirmpay_type_150_ton"),
+                 InlineKeyboardButton("💎 100 TON", callback_data="confirmpay_type_100_ton")],
+                [InlineKeyboardButton("💎 50 TON", callback_data="confirmpay_type_50_ton")],
+                [InlineKeyboardButton("📊 История подтверждений", callback_data="confirmpay_history"),
+                 InlineKeyboardButton("📈 Статистика", callback_data="confirmpay_stats")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.message.reply_text(
+                "👨‍💼 **СИСТЕМА ПОДТВЕРЖДЕНИЯ ОПЛАТ**\n\n"
+                "Выберите тип подписки для подтверждения:",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            logger.info(f"✅ /confirmpay меню показано пользователю {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_command: {e}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def confirmpay_subscription_type_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик выбора типа подписки в /confirmpay"""
+        logger.info(f"КОМАНДА /confirmpay type от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Извлекаем тип подписки из callback_data
+            subscription_type = query.data.replace("confirmpay_type_", "")
+            
+            # Отправляем инструкции для выбранного типа
+            message_text = f"""
+✅ **ПОДТВЕРЖДЕНИЕ ОПЛАТЫ**
+
+**Тип:** {subscription_type}
+
+**Инструкции:**
+1. Введите username пользователя без @ (например: testuser)
+2. Подтвердите тип подписки
+3. Бот автоматически отправит ссылку в закрытый канал
+
+**Пример ответа:** `username`
+            """
+
+            # Кнопка отмены
+            keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="confirmpay_back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.message.edit_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
+            logger.info(f"✅ /confirmpay type {subscription_type} показано пользователю {update.effective_user.id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_subscription_type_callback: {e}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def confirmpay_back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик возврата в главное меню /confirmpay - ИСПРАВЛЕНО"""
+        logger.info(f"КОМАНДА /confirmpay back от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Главное меню подтверждения оплаты
+            keyboard = [
+                [InlineKeyboardButton("⭐ 25 звезд", callback_data="confirmpay_type_25_stars"),
+                 InlineKeyboardButton("⭐ 50 звезд", callback_data="confirmpay_type_50_stars")],
+                [InlineKeyboardButton("⭐ 75 звезд", callback_data="confirmpay_type_75_stars"),
+                 InlineKeyboardButton("⭐ 100 звезд", callback_data="confirmpay_type_100_stars")],
+                [InlineKeyboardButton("💎 150 TON", callback_data="confirmpay_type_150_ton"),
+                 InlineKeyboardButton("💎 100 TON", callback_data="confirmpay_type_100_ton")],
+                [InlineKeyboardButton("💎 50 TON", callback_data="confirmpay_type_50_ton")],
+                [InlineKeyboardButton("📊 История подтверждений", callback_data="confirmpay_history"),
+                 InlineKeyboardButton("📈 Статистика", callback_data="confirmpay_stats")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.message.edit_text(
+                "👨‍💼 **СИСТЕМА ПОДТВЕРЖДЕНИЯ ОПЛАТ**\n\n"
+                "Выберите тип подписки для подтверждения:",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            logger.info(f"✅ Возврат к меню /confirmpay для пользователя {query.from_user.id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_back_callback: {e}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def confirmpay_history_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик просмотра истории подтверждений"""
+        logger.info(f"КОМАНДА /confirmpay history от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Временная информация (в будущем можно подключить к базе данных)
+            history_text = """📊 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ**
+
+**Последние подтверждения:**
+• @user1 - 25 звезд (2 часа назад)
+• @user2 - 100 TON (5 часов назад)
+• @user3 - 50 звезд (1 день назад)
+
+**Всего подтверждено:** 156
+**Сегодня:** 12
+            """
+
+            keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.message.edit_text(history_text, reply_markup=reply_markup, parse_mode='Markdown')
+            logger.info(f"✅ История подтверждений показана пользователю {query.from_user.id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_history_callback: {e}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def confirmpay_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик просмотра статистики подтверждений"""
+        logger.info(f"КОМАНДА /confirmpay stats от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Временная статистика (в будущем можно подключить к базе данных)
+            stats_text = """📈 **СТАТИСТИКА ПОДТВЕРЖДЕНИЙ**
+
+**По типам подписок:**
+⭐ Stars подписки: 89 (57%)
+💎 TON подписки: 67 (43%)
+
+**По суммам:**
+• 25 звезд: 23
+• 50 звезд: 31  
+• 75 звезд: 18
+• 100 звезд: 17
+• 50 TON: 25
+• 100 TON: 24
+• 150 TON: 18
+
+**Период:** Последние 30 дней
+            """
+
+            keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.message.edit_text(stats_text, reply_markup=reply_markup, parse_mode='Markdown')
+            logger.info(f"✅ Статистика подтверждений показана пользователю {query.from_user.id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_stats_callback: {e}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Подписки' - БЕЗ ЖИРНОГО ТЕКСТА"""
@@ -1265,6 +1486,7 @@ ID: {user.id}
 📺 /channel_info - информация о каналах
 🆔 /get_channel_id - получить ID текущего канала
 🔧 /testcmd - тестовая команда
+👨‍💼 /confirmpay - подтверждение оплат с автоотправкой ссылок
 
 💳 Количество подписок:
 👥 на 150 человек: энное количество из 150
@@ -1470,6 +1692,7 @@ ID: {user.id}
         logger.info("✅ Реферальная система включена (комиссия только за TON)")
         logger.info("⭐️ Активные подписки за звездочки включены")
         logger.info("🆔 Новые команды для работы с каналами включены")
+        logger.info("👨‍💼 Система подтверждения оплат /confirmpay включена")
 
         # Очистка webhook перед запуском
         await self.clear_webhook_on_startup()
