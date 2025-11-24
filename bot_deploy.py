@@ -1094,20 +1094,20 @@ ID: {user.id}
                 # Проверяем формат username
                 if not re.match(r'^[a-zA-Z0-9_]{5,32}$', message_text):
                     await update.message.reply_text(
-                        "❌ **НЕВЕРНЫЙ USERNAME**\n\n"
+                        "❌ НЕВЕРНЫЙ USERNAME\n\n"
                         "Username должен содержать:\n"
                         "• Только буквы, цифры и подчеркивания\n"
                         "• От 5 до 32 символов\n"
                         "• Без пробелов и специальных символов\n\n"
-                        "**Примеры:** `testuser`, `user123`, `my_name`"
+                        "Примеры: testuser, user123, my_name"
                     )
                     return
                 
                 # Показываем подтверждение с кнопкой
-                confirmation_text = f"""✅ **ПОДТВЕРЖДЕНИЕ ПОДПИСКИ**
+                confirmation_text = f"""✅ ПОДТВЕРЖДЕНИЕ ПОДПИСКИ
 
-**Username:** @{message_text}
-**Тип подписки:** {subscription_type}
+Username: {message_text}
+Тип подписки: {subscription_type}
 
 После подтверждения пользователю будет отправлена ссылка на закрытый канал.
                 """
@@ -1123,8 +1123,7 @@ ID: {user.id}
                 
                 await update.message.reply_text(
                     confirmation_text, 
-                    reply_markup=reply_markup, 
-                    parse_mode='Markdown'
+                    reply_markup=reply_markup
                 )
                 
                 logger.info(f"✅ Username получен для /confirmpay: @{message_text} - {subscription_type}")
