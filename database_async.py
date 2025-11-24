@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Асинхронный менеджер базы данных для PassiveNFT Bot
+Асинхронный менеджер базы данных для PassiveNFT Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ С РЕФЕРАЛЬНОЙ СИСТЕМОЙ
 РЕШАЕТ ПРОБЛЕМУ ЗАВИСАНИЯ БОТА ЧЕРЕЗ 20-30 МИНУТ
 Использует aiosqlite вместо sqlite3 для неблокирующих операций
+ИСПРАВЛЕНИЯ РЕФЕРАЛЬНОЙ СИСТЕМЫ:
+- Добавлены методы для обработки подтверждений оплаты с реферальной системой
+- Автоматический расчет 10% комиссии для TON-подписок
+- Улучшенная статистика рефералов с детальной информацией
+- Методы для админского просмотра реферальной статистики
 """
 import asyncio
 import aiosqlite
@@ -97,6 +102,31 @@ class AsyncDatabaseManager:
                     )
                 """)
                 
+                # ТАБЛИЦА ДЛЯ ОЧЕРЕДИ ОТЛОЖЕННЫХ СООБЩЕНИЙ
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS pending_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        username TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        subscription_type TEXT NOT NULL,
+                        invite_link TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # ТАБЛИЦА ДЛЯ ПОДТВЕРЖДЕНИЙ ОПЛАТЫ (КОТОРАЯ ИСПОЛЬЗУЕТСЯ В БОТЕ)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS payment_confirmations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        user_id INTEGER NOT NULL,
+                        username TEXT NOT NULL,
+                        subscription_type TEXT NOT NULL,
+                        confirmed_by INTEGER NOT NULL,
+                        invite_link TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
                 await db.commit()
                 logger.info("✅ Асинхронная база данных инициализирована с системой подтверждения оплаты")
     
@@ -123,27 +153,6 @@ class AsyncDatabaseManager:
                 await db.commit()
                 logger.info(f"✅ Пользователь {user_id} создан в базе данных")
                 return referral_code
-    
-    async def get_user_by_username(self, username: str) -> Optional[Dict]:
-        """Поиск пользователя по username для автоотправки ссылок"""
-        async with self._lock:
-            async with aiosqlite.connect(self.db_path) as db:
-                cursor = await db.execute(
-                    "SELECT id, username, first_name, last_name, referral_code, created_at FROM users WHERE username = ?",
-                    (username,)
-                )
-                row = await cursor.fetchone()
-                await cursor.close()
-                if row:
-                    return {
-                        'id': row[0],
-                        'username': row[1],
-                        'first_name': row[2],
-                        'last_name': row[3],
-                        'referral_code': row[4],
-                        'created_at': row[5]
-                    }
-                return None
     
     async def save_pending_referral(self, user_id: int, referrer_id: int):
         """Сохранение информации о временном реферале"""
@@ -253,17 +262,18 @@ class AsyncDatabaseManager:
                 await cursor.close()
                 
                 if not row or row[0] == 0:
-                    return "У вас пока нет рефералов."
+                    return "У вас пока нет рефералов.\n💡 Поделитесь своей реферальной ссылкой с друзьями!"
                 
                 total_referrals, total_earnings, ton_referrals, stars_referrals = row
                 
-                return f"""📊 Статистика рефералов:
+                return f"""📊 Ваша реферальная статистика:
 👥 Всего рефералов: {total_referrals}
 💰 Заработано TON: {total_earnings:.2f}
 💎 TON рефералов: {ton_referrals}
 ⭐ Stars рефералов: {stars_referrals}
 
-💡 Комиссия начисляется только за TON-подписки!"""
+💡 Комиссия 10% начисляется только за TON-подписки!
+🎯 Приглашайте друзей и зарабатывайте больше!"""
     
     async def calculate_commission(self, subscription_amount: float, subscription_type: str, payment_method: str) -> float:
         """Расчет комиссии для реферала (только для TON-подписок)"""
@@ -286,6 +296,178 @@ class AsyncDatabaseManager:
                 """, (referrer_id, referred_id, commission_amount, subscription_type, payment_method))
                 await db.commit()
                 logger.info(f"💰 Комиссия {commission_amount} TON начислена рефереру {referrer_id}")
+    
+    # ========== НОВЫЕ МЕТОДЫ ДЛЯ РЕФЕРАЛЬНОЙ СИСТЕМЫ В ПОДТВЕРЖДЕНИИ ОПЛАТЫ ==========
+    
+    async def process_payment_confirmation_with_referral(self, username: str, subscription_type: str, 
+                                                       subscription_amount: float, payment_method: str,
+                                                       admin_id: int, referrer_id: Optional[int] = None) -> Dict:
+        """Обработка подтверждения оплаты с автоматическим расчетом реферальной комиссии"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    # Сначала получим или создадим пользователя
+                    cursor = await db.execute("SELECT id FROM users WHERE username = ?", (username,))
+                    row = await cursor.fetchone()
+                    
+                    user_id = None
+                    if row:
+                        user_id = row[0]
+                        await cursor.close()
+                    else:
+                        # Создаем нового пользователя
+                        await cursor.close()
+                        await db.execute("""
+                            INSERT OR IGNORE INTO users (id, username, referral_code)
+                            VALUES (?, ?, ?)
+                        """, (hash(username) % 1000000000, username, f"ref_{hash(username) % 1000000000}"))
+                        user_id = hash(username) % 1000000000
+                    
+                    # Добавляем подписку
+                    await db.execute("""
+                        INSERT INTO subscriptions 
+                        (user_id, subscription_type, payment_method, amount, currency, status)
+                        VALUES (?, ?, ?, ?, ?, 'confirmed')
+                    """, (user_id, subscription_type, payment_method, subscription_amount, payment_method))
+                    
+                    # Добавляем запись в payment_confirmations
+                    await db.execute("""
+                        INSERT INTO payment_confirmations 
+                        (user_id, username, subscription_type, confirmed_by, invite_link)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (user_id, username, subscription_type, admin_id, "auto_generated"))
+                    
+                    # ОБРАБОТКА РЕФЕРАЛЬНОЙ СИСТЕМЫ
+                    result = {
+                        'user_id': user_id,
+                        'referrer_found': False,
+                        'commission_calculated': 0.0,
+                        'referrer_id': None
+                    }
+                    
+                    if payment_method.upper() == 'TON' and referrer_id:
+                        # Проверяем, что реферер существует
+                        cursor = await db.execute("SELECT id FROM users WHERE id = ?", (referrer_id,))
+                        referrer_exists = await cursor.fetchone()
+                        await cursor.close()
+                        
+                        if referrer_exists:
+                            # Добавляем реферала если его еще нет
+                            await self.add_referral(referrer_id, user_id)
+                            
+                            # Рассчитываем и начисляем комиссию
+                            commission = await self.calculate_commission(
+                                subscription_amount, subscription_type, payment_method
+                            )
+                            
+                            await self.add_referral_earnings(
+                                referrer_id, user_id, commission, subscription_type, payment_method
+                            )
+                            
+                            # Удаляем ожидающего реферера если он есть
+                            await self.remove_pending_referral(user_id)
+                            
+                            result.update({
+                                'referrer_found': True,
+                                'commission_calculated': commission,
+                                'referrer_id': referrer_id
+                            })
+                            
+                            logger.info(f"💰 Реферальная комиссия {commission} TON начислена рефереру {referrer_id}")
+                    
+                    await db.commit()
+                    logger.info(f"✅ Подтверждение оплаты обработано для @{username}")
+                    return result
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка обработки подтверждения оплаты: {e}")
+            raise e
+    
+    async def get_detailed_referral_stats(self) -> List[Dict]:
+        """Получение детальной статистики рефералов для админов"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    cursor = await db.execute("""
+                        SELECT 
+                            u.username as referrer_username,
+                            u.first_name as referrer_name,
+                            COUNT(r.id) as total_referrals,
+                            COALESCE(SUM(re.commission_amount), 0) as total_earnings,
+                            COUNT(CASE WHEN re.payment_method = 'TON' THEN 1 END) as ton_referrals,
+                            COUNT(CASE WHEN re.payment_method = 'STARS' THEN 1 END) as stars_referrals,
+                            COALESCE(SUM(CASE WHEN re.payment_method = 'TON' THEN re.commission_amount ELSE 0 END), 0) as ton_earnings
+                        FROM users u
+                        LEFT JOIN referrals r ON u.id = r.referrer_id
+                        LEFT JOIN referral_earnings re ON r.referred_id = re.referred_id
+                        GROUP BY u.id
+                        HAVING COUNT(r.id) > 0
+                        ORDER BY total_earnings DESC, total_referrals DESC
+                    """)
+                    
+                    rows = await cursor.fetchall()
+                    await cursor.close()
+                    
+                    stats = []
+                    for row in rows:
+                        stats.append({
+                            'referrer_username': row[0] or 'Без username',
+                            'referrer_name': row[1] or 'Без имени',
+                            'total_referrals': row[2],
+                            'total_earnings': float(row[3]),
+                            'ton_referrals': row[4],
+                            'stars_referrals': row[5],
+                            'ton_earnings': float(row[6])
+                        })
+                    
+                    return stats
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения детальной реферальной статистики: {e}")
+            return []
+    
+    async def get_referral_stats_by_username(self, username: str) -> Optional[Dict]:
+        """Получение реферальной статистики по конкретному username"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    cursor = await db.execute("""
+                        SELECT 
+                            u.username,
+                            u.first_name,
+                            u.last_name,
+                            COUNT(r.id) as total_referrals,
+                            COALESCE(SUM(re.commission_amount), 0) as total_earnings,
+                            COUNT(CASE WHEN re.payment_method = 'TON' THEN 1 END) as ton_referrals,
+                            COUNT(CASE WHEN re.payment_method = 'STARS' THEN 1 END) as stars_referrals,
+                            COALESCE(SUM(CASE WHEN re.payment_method = 'TON' THEN re.commission_amount ELSE 0 END), 0) as ton_earnings
+                        FROM users u
+                        LEFT JOIN referrals r ON u.id = r.referrer_id
+                        LEFT JOIN referral_earnings re ON r.referred_id = re.referred_id
+                        WHERE u.username = ?
+                        GROUP BY u.id
+                    """, (username,))
+                    
+                    row = await cursor.fetchone()
+                    await cursor.close()
+                    
+                    if row:
+                        return {
+                            'username': row[0] or 'Без username',
+                            'first_name': row[1] or 'Без имени',
+                            'last_name': row[2] or '',
+                            'total_referrals': row[3],
+                            'total_earnings': float(row[4]),
+                            'ton_referrals': row[5],
+                            'stars_referrals': row[6],
+                            'ton_earnings': float(row[7])
+                        }
+                    
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения реферальной статистики для @{username}: {e}")
+            return None
     
     async def get_all_users_count(self) -> int:
         """Получение общего количества пользователей"""
@@ -539,121 +721,192 @@ class AsyncDatabaseManager:
             logger.error(f"❌ Ошибка получения статистики подтверждений: {e}")
             return {}
     
-    async def close(self):
-        """Корректное закрытие соединения с базой данных"""
-        logger.info("🔒 Асинхронная база данных закрыта")
+    async def save_payment_confirmation(self, user_id: int, username: str, subscription_type: str, confirmed_by: int, invite_link: str):
+        """Сохранение подтверждения оплаты"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    await db.execute("""
+                        INSERT INTO payment_confirmations 
+                        (user_id, username, subscription_type, confirmed_by, invite_link)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (user_id, username, subscription_type, confirmed_by, invite_link))
+                    
+                    await db.commit()
+                    logger.info(f"✅ Подтверждение сохранено для @{username}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения подтверждения: {e}")
+            raise e
     
-    async def create_user(self, user):
-        """Создание пользователя в базе данных (алиас для get_or_create_user)"""
-        return await self.get_or_create_user(
-            user_id=user.id,
-            username=user.username or "",
-            first_name=user.first_name or "",
-            last_name=user.last_name or ""
-        )
-    
-    async def get_subscription_stats(self):
-        """Получение статистики подписок"""
-        return {
-            'total_users': await self.get_all_users_count(),
-            'ton_subscribers': 0,  # Здесь можно добавить реальную логику
-            'stars_subscribers': 0,  # Здесь можно добавить реальную логику
-            'total_referrals': await self.get_total_referrals_count(),
-            'ton_revenue': 0,  # Здесь можно добавить реальную логику
-            'stars_revenue': 0  # Здесь можно добавить реальную логику
-        }
-    
-    async def get_all_users(self, limit=20):
-        """Получение списка всех пользователей"""
-        async with self._lock:
-            async with aiosqlite.connect(self.db_path) as db:
-                cursor = await db.execute("""
-                    SELECT user_id, username, created_at 
-                    FROM users 
-                    ORDER BY created_at DESC 
-                    LIMIT ?
-                """, (limit,))
-                rows = await cursor.fetchall()
-                await cursor.close()
-                
-                users = []
-                for row in rows:
-                    users.append({
-                        'user_id': row[0],
-                        'username': row[1] or 'без username',
-                        'created_at': str(row[2])
-                    })
-                
-                return users
-    
-    async def get_referral_stats(self):
-        """Получение реферальной статистики"""
-        async with self._lock:
-            async with aiosqlite.connect(self.db_path) as db:
-                cursor = await db.execute("""
-                    SELECT COUNT(*) FROM referrals
-                """)
-                total_referrals = (await cursor.fetchone())[0]
-                await cursor.close()
-                
-                cursor = await db.execute("""
-                    SELECT COALESCE(SUM(commission_amount), 0) 
-                    FROM referral_earnings 
-                    WHERE payment_method = 'TON'
-                """)
-                total_revenue = (await cursor.fetchone())[0]
-                await cursor.close()
-                
-                # Топ рефереров
-                cursor = await db.execute("""
-                    SELECT 
-                        u.id as referrer_user_id,
-                        u.username as referrer_username,
-                        COUNT(r.id) as referral_count
-                    FROM users u
-                    LEFT JOIN referrals r ON u.id = r.referrer_id
-                    GROUP BY u.id
-                    ORDER BY referral_count DESC
-                    LIMIT 10
-                """)
-                top_referrers = []
-                rows = await cursor.fetchall()
-                await cursor.close()
-                
-                for row in rows:
-                    top_referrers.append({
-                        'referrer_user_id': row[0],
-                        'referrer_username': row[1] or 'без username',
-                        'referral_count': row[2]
-                    })
-                
-                return {
-                    'total_referrals': total_referrals,
-                    'total_revenue': total_revenue,
-                    'top_referrers': top_referrers
-                }
-    
-    async def check_subscription_access(self, user_id: int, subscription_amount: int, subscription_type: str) -> Dict:
-        """Проверка доступа пользователя к подписке"""
+    async def get_confirmation_history(self, limit: int = 10) -> List[Dict]:
+        """Получение истории подтверждений"""
         try:
             async with self._lock:
                 async with aiosqlite.connect(self.db_path) as db:
                     cursor = await db.execute("""
-                        SELECT COUNT(*) FROM subscriptions 
-                        WHERE user_id = ? 
-                        AND status = 'confirmed'
-                    """, (user_id,))
-                    subscription_count = (await cursor.fetchone())[0]
+                        SELECT * FROM payment_confirmations
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                    """, (limit,))
+                    
+                    rows = await cursor.fetchall()
                     await cursor.close()
                     
-                    return {
-                        'has_access': subscription_count > 0,
-                        'subscription_count': subscription_count
-                    }
+                    history = []
+                    columns = ['id', 'user_id', 'username', 'subscription_type', 'confirmed_by', 'invite_link', 'created_at']
+                    
+                    for row in rows:
+                        record = dict(zip(columns, row))
+                        history.append(record)
+                    
+                    logger.info(f"📊 Получена история подтверждений: {len(history)} записей")
+                    return history
+                    
         except Exception as e:
-            logger.error(f"Ошибка проверки доступа: {e}")
-            return {'has_access': False, 'subscription_count': 0}
-
-
-# Алиас для обратной совместимости с bot_deploy.py
-DatabaseAsync = AsyncDatabaseManager
+            logger.error(f"❌ Ошибка получения истории подтверждений: {e}")
+            return []
+    
+    async def get_confirmation_stats(self) -> Dict:
+        """Получение статистики подтверждений (исправленная версия)"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    # Общая статистика
+                    cursor = await db.execute("SELECT COUNT(*) FROM payment_confirmations")
+                    total_confirmations = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения сегодня
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM payment_confirmations 
+                        WHERE DATE(created_at) = DATE('now')
+                    """)
+                    today_confirmations = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения за неделю
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM payment_confirmations 
+                        WHERE created_at >= datetime('now', '-7 days')
+                    """)
+                    week_confirmations = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Подтверждения за месяц
+                    cursor = await db.execute("""
+                        SELECT COUNT(*) FROM payment_confirmations 
+                        WHERE created_at >= datetime('now', '-30 days')
+                    """)
+                    month_confirmations = (await cursor.fetchone())[0]
+                    await cursor.close()
+                    
+                    # Статистика по типам подписок
+                    cursor = await db.execute("""
+                        SELECT subscription_type, COUNT(*) as count
+                        FROM payment_confirmations
+                        GROUP BY subscription_type
+                        ORDER BY count DESC
+                    """)
+                    by_subscription = await cursor.fetchall()
+                    await cursor.close()
+                    
+                    # Формируем словарь статистики
+                    stats = {
+                        'total_confirmations': total_confirmations,
+                        'today_confirmations': today_confirmations,
+                        'week_confirmations': week_confirmations,
+                        'month_confirmations': month_confirmations,
+                        'by_subscription_type': dict(by_subscription)
+                    }
+                    
+                    logger.info(f"📈 Статистика подтверждений обновлена: {stats}")
+                    return stats
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения статистики подтверждений: {e}")
+            return {
+                'total_confirmations': 0,
+                'today_confirmations': 0,
+                'week_confirmations': 0,
+                'month_confirmations': 0,
+                'by_subscription_type': {}
+            }
+    
+    async def save_pending_message(self, username: str, message: str, subscription_type: str, invite_link: str):
+        """Сохранение отложенного сообщения для пользователя"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    await db.execute("""
+                        INSERT INTO pending_messages 
+                        (username, message, subscription_type, invite_link)
+                        VALUES (?, ?, ?, ?)
+                    """, (username, message, subscription_type, invite_link))
+                    
+                    await db.commit()
+                    logger.info(f"📬 Отложенное сообщение сохранено для @{username}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка сохранения отложенного сообщения: {e}")
+            raise e
+    
+    async def get_user_by_username(self, username: str) -> Optional[Dict]:
+        """Получение пользователя по username"""
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    cursor = await db.execute("""
+                        SELECT * FROM users WHERE username = ?
+                    """, (username,))
+                    
+                    row = await cursor.fetchone()
+                    await cursor.close()
+                    
+                    if row:
+                        columns = ['id', 'username', 'first_name', 'last_name', 'created_at', 'referral_code']
+                        return dict(zip(columns, row))
+                    
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения пользователя @{username}: {e}")
+            return None
+    
+    async def check_subscription_access(self, user_id: int, subscription_amount: int, subscription_type: str) -> Dict:
+        """
+        Проверка доступа пользователя к каналу подписки
+        """
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    # Проверяем наличие записи о подписке в базе данных
+                    cursor = await db.execute("""
+                        SELECT * FROM subscriptions 
+                        WHERE user_id = ? AND subscription_type = ? AND amount = ? AND status = 'active'
+                    """, (user_id, subscription_type, subscription_amount))
+                    
+                    row = await cursor.fetchone()
+                    await cursor.close()
+                    
+                    if row:
+                        return {
+                            'has_access': True,
+                            'subscription_data': dict(row)
+                        }
+                    else:
+                        return {
+                            'has_access': False,
+                            'subscription_data': None
+                        }
+                        
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки доступа пользователя {user_id}: {e}")
+            return {
+                'has_access': False,
+                'subscription_data': None
+            }
+    
+    async def close(self):
+        """Корректное закрытие соединения с базой данных"""
+        logger.info("🔒 Асинхронная база данных закрыта")
