@@ -14,6 +14,7 @@ PassiveNFT Bot - ВЕРСИЯ С АКТИВНЫМИ ПОДПИСКАМИ (за �
 - ДОБАВЛЕНЫ КОМАНДЫ /channel_info, /get_channel_id, /testcmd
 - ИСПРАВЛЕНА ПРОБЛЕМА С PARSING MARKDOWN - правильное экранирование специальных символов
 - ПОЛНОСТЬЮ ИСПРАВЛЕНА СИСТЕМА /confirmpay для бесперебойной работы
+- ИСПРАВЛЕНА АВТООТПРАВКА ССЫЛОК ПОЛЬЗОВАТЕЛЯМ - пользователь должен быть в базе данных
 """
 import asyncio
 import logging
@@ -165,6 +166,20 @@ class SafeConfig:
             "https://t.me/+diQh7MowVhIwYzVi",
             "https://t.me/+6XnGRwJd8rY2ZGUy"
         ]
+        
+        # НОВОЕ: PRIVATE_CHANNEL_LINKS для соответствия системе /confirmpay
+        self.PRIVATE_CHANNEL_LINKS = {
+            "25_stars": "https://t.me/+xLVbmqzc3Dk2NWM6",
+            "50_stars": "https://t.me/+uxH6Ot8Kyu4wZDk6", 
+            "75_stars": "https://t.me/+diQh7MowVhIwYzVi",
+            "100_stars": "https://t.me/+6XnGRwJd8rY2ZGUy",
+            "150_stars": "https://t.me/+6XnGRwJd8rY2ZGUy",
+            "200_stars": "https://t.me/+6XnGRwJd8rY2ZGUy", 
+            "250_stars": "https://t.me/+6XnGRwJd8rY2ZGUy",
+            "50_ton": "https://t.me/+4BhdYzF2U65hOTIy",
+            "100_ton": "https://t.me/+O7KaTknXPDVlMjY6",
+            "150_ton": "https://t.me/+LaQZfJHeQPcyNjUy"
+        }
 
         # Настройки подписок - БЕЗ ЖИРНОГО ТЕКСТА
         self.SUBSCRIPTION_PLANS = [
@@ -663,7 +678,7 @@ ID: {user.id}
         except Exception as e:
             logger.error(f"Ошибка в testcmd_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text("❌ Произошла ошибка при выполнении команды.")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start с обработкой реферальных параметров"""
@@ -810,7 +825,7 @@ ID: {user.id}
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def confirmpay_confirm_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик подтверждения подписки - ИСПРАВЛЕНО"""
+        """Обработчик подтверждения подписки - ИСПРАВЛЕНО ДЛЯ АВТООТПРАВКИ ССЫЛОК"""
         logger.info(f"КОМАНДА /confirmpay confirm от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
@@ -848,35 +863,140 @@ ID: {user.id}
 Тип подписки: {subscription_type}
 Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-Ссылка отправлена пользователю:
-{invite_link}
-
-Система подтверждения оплат: Активна ✅"""
+ИСПРАВЛЕНО: Отправляем ссылку пользователю..."""
 
             await query.message.edit_text(confirmation_text)
             
-            # НОВОЕ: Отправляем ссылку пользователю
+            # ИСПРАВЛЕННАЯ АВТООТПРАВКА ССЫЛОК
             try:
-                # Получаем пользователя по username
-                chat = await self.application.bot.get_chat(f"@{username}")
+                # ШАГ 1: Проверяем что пользователь есть в базе данных (т.е. запускал /start)
+                user_data = await self.database.get_user_by_username(username)
                 
-                user_message = f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
+                if not user_data:
+                    # Пользователь НЕ запускал /start - НЕ МОЖЕМ отправить сообщение
+                    logger.warning(f"⚠️ Пользователь @{username} не найден в базе данных. Вероятно, не запускал /start")
+                    
+                    # Обновляем сообщение для админа
+                    await query.message.edit_text(
+                        f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ВЫПОЛНЕНО
 
-Поздравляем! Ваша подписка на {subscription_type} подтверждена администратором.\n\nПригласительная ссылка на закрытый канал:\n🔗 {invite_link}\n\nСпасибо за вашу подписку!"""
-                
-                await self.application.bot.send_message(
-                    chat_id=chat.id,
-                    text=user_message
-                )
-                
-                logger.info(f"✅ Ссылка успешно отправлена пользователю @{username}")
+Администратор: {query.from_user.username or query.from_user.first_name}
+Пользователь: {username}
+Тип подписки: {subscription_type}
+Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+⚠️ ПРОБЛЕМА: Пользователь @{username} НЕ найден в базе данных
+Это означает, что пользователь НЕ запускал бота командой /start
+Следовательно, бот НЕ МОЖЕТ отправить ему сообщение
+
+🔗 ССЫЛКА ДЛЯ РУЧНОЙ ОТПРАВКИ:
+{invite_link}
+
+⚡ АДМИН ДЕЙСТВИЕ: Отправьте эту ссылку пользователю @{username} вручную"""
+                    )
+                    
+                    logger.info(f"⚠️ Пользователь @{username} не запускал /start - отправляем ссылку вручную")
+                    
+                else:
+                    # Пользователь ЕСТЬ в базе данных - можем отправить сообщение
+                    logger.info(f"✅ Пользователь @{username} найден в базе данных (ID: {user_data['id']})")
+                    
+                    # ШАГ 2: Используем ИСПРАВЛЕННЫЙ метод get_chat() без @
+                    try:
+                        chat = await self.application.bot.get_chat(username)  # ИСПРАВЛЕНО: убираем @ 
+                        
+                        user_message = f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
+
+Поздравляем! Ваша подписка на {subscription_type} подтверждена администратором.
+
+🔗 Пригласительная ссылка на закрытый канал:
+{invite_link}
+
+Спасибо за вашу подписку!"""
+                        
+                        await self.application.bot.send_message(
+                            chat_id=chat.id,
+                            text=user_message
+                        )
+                        
+                        logger.info(f"✅ Ссылка успешно отправлена пользователю @{username}")
+                        
+                        # Обновляем сообщение для админа о успехе
+                        await query.message.edit_text(
+                            f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ВЫПОЛНЕНО
+
+Администратор: {query.from_user.username or query.from_user.first_name}
+Пользователь: {username}
+Тип подписки: {subscription_type}
+Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+✅ ССЫЛКА УСПЕШНО ОТПРАВЛЕНА ПОЛЬЗОВАТЕЛЮ @{username}
+Система подтверждения оплат: Активна ✅"""
+                        )
+                        
+                    except Exception as get_chat_error:
+                        logger.error(f"❌ Ошибка при получении чата пользователя @{username}: {get_chat_error}")
+                        
+                        # Пробуем альтернативный способ - по user_id из базы
+                        try:
+                            if 'id' in user_data:
+                                user_id = user_data['id']
+                                user_message = f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
+
+Поздравляем! Ваша подписка на {subscription_type} подтверждена администратором.
+
+🔗 Пригласительная ссылка на закрытый канал:
+{invite_link}
+
+Спасибо за вашу подписку!"""
+                                
+                                await self.application.bot.send_message(
+                                    chat_id=user_id,
+                                    text=user_message
+                                )
+                                
+                                logger.info(f"✅ Ссылка отправлена пользователю @{username} через user_id: {user_id}")
+                                
+                                await query.message.edit_text(
+                                    f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ВЫПОЛНЕНО
+
+Администратор: {query.from_user.username or query.from_user.first_name}
+Пользователь: {username}
+Тип подписки: {subscription_type}
+Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+✅ ССЫЛКА УСПЕШНО ОТПРАВЛЕНА ПОЛЬЗОВАТЕЛЮ @{username}
+(Отправлено через user_id: {user_id})
+
+Система подтверждения оплат: Активна ✅"""
+                                )
+                                
+                        except Exception as user_id_error:
+                            logger.error(f"❌ Не удалось отправить ссылку через user_id для @{username}: {user_id_error}")
+                            raise user_id_error
                 
             except Exception as send_error:
-                logger.error(f"❌ Не удалось отправить ссылку пользователю @{username}: {send_error}")
+                logger.error(f"❌ Ошибка при отправке ссылки пользователю @{username}: {send_error}")
+                
                 # Отправляем сообщение админу о проблеме
-                await query.message.reply_text(
-                    f"⚠️ ПРЕДУПРЕЖДЕНИЕ: Не удалось отправить ссылку пользователю @{username}. " \
-                    f"Отправьте ссылку вручную:\n{invite_link}"
+                await query.message.edit_text(
+                    f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ВЫПОЛНЕНО
+
+Администратор: {query.from_user.username or query.from_user.first_name}
+Пользователь: {username}
+Тип подписки: {subscription_type}
+Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+❌ ОШИБКА: Не удалось отправить ссылку пользователю @{username}
+Ошибка: {send_error}
+
+🔗 ОТПРАВЬТЕ ССЫЛКУ ВРУЧНУЮ:
+{invite_link}
+
+⚠️ Возможные причины:
+1. Пользователь не запускал /start
+2. У пользователя нет username
+3. Техническая ошибка"""
                 )
             
             # Сохраняем в историю подтверждений (база данных)
@@ -990,66 +1110,60 @@ ID: {user.id}
 
     async def get_confirmation_history(self) -> list:
         """Получение истории подтверждений - ИСПРАВЛЕНО"""
-        if not self.confirmation_history:
+        try:
+            if not self.confirmation_history:
+                return []
+            
+            # Форматируем данные для отображения
+            formatted_history = []
+            for conf in self.confirmation_history:
+                time_diff = datetime.now() - conf.get('timestamp', datetime.now())
+                
+                # Форматируем время
+                if time_diff.days > 0:
+                    time_str = f"{time_diff.days} дн. назад"
+                elif time_diff.seconds > 3600:
+                    hours = time_diff.seconds // 3600
+                    time_str = f"{hours} ч. назад"
+                elif time_diff.seconds > 60:
+                    minutes = time_diff.seconds // 60
+                    time_str = f"{minutes} мин. назад"
+                else:
+                    time_str = "только что"
+                
+                formatted_history.append({
+                    'username': conf.get('username', 'unknown'),
+                    'subscription_type': conf.get('subscription_type', 'unknown'),
+                    'time': time_str,
+                    'date': conf.get('timestamp', datetime.now())
+                })
+            
+            return formatted_history
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения истории: {e}")
             return []
-        
-        # Форматируем реальные данные для отображения
-        formatted_history = []
-        for confirmation in self.confirmation_history:
-            # Определяем временной интервал
-            now = datetime.now()
-            timestamp = confirmation['timestamp']
-            delta = now - timestamp
-            
-            if delta.seconds < 60:
-                time_str = "только что"
-            elif delta.seconds < 3600:
-                minutes = delta.seconds // 60
-                time_str = f"{minutes} мин назад"
-            elif delta.days == 0:
-                hours = delta.seconds // 3600
-                time_str = f"{hours} ч назад"
-            elif delta.days == 1:
-                time_str = "вчера"
-            else:
-                time_str = f"{delta.days} дн назад"
-            
-            formatted_history.append({
-                'username': confirmation['username'],
-                'subscription_type': confirmation['subscription_type'],
-                'time': time_str,
-                'date': timestamp
-            })
-        
-        # Возвращаем в обратном порядке (новые первые)
-        return list(reversed(formatted_history))
 
     async def confirmpay_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик просмотра статистики подтверждений - ИСПРАВЛЕНО"""
+        """Обработчик статистики подтверждений - ИСПРАВЛЕНО"""
         logger.info(f"КОМАНДА /confirmpay stats от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # Получаем реальную статистику
+            # Получаем реальную статистику из базы данных или памяти
             stats_data = await self.get_confirmation_stats()
             
             stats_text = f"""📈 СТАТИСТИКА ПОДТВЕРЖДЕНИЙ
 
-По типам подписок:
-⭐ Stars подписки: {stats_data['stars_count']} ({stats_data['stars_percentage']}%)
-💎 TON подписки: {stats_data['ton_count']} ({stats_data['ton_percentage']}%)
+Всего подтверждено: {stats_data['total_confirmations']}
+За сегодня: {stats_data['today_confirmations']}
 
-По суммам:
-• 25 звезд: {stats_data['25_stars']}
-• 50 звезд: {stats_data['50_stars']}  
-• 75 звезд: {stats_data['75_stars']}
-• 100 звезд: {stats_data['100_stars']}
-• 50 TON: {stats_data['50_ton']}
-• 100 TON: {stats_data['100_ton']}
-• 150 TON: {stats_data['150_ton']}
+Последние подтверждения:
+{stats_data['recent_confirmations']}
 
-Период: Последние 30 дней"""
+Популярные подписки:
+{stats_data['popular_subscriptions']}"""
 
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1063,51 +1177,68 @@ ID: {user.id}
 
     async def get_confirmation_stats(self) -> dict:
         """Получение статистики подтверждений - ИСПРАВЛЕНО"""
-        # В реальном проекте это будет запрос к базе данных
-        # Пока возвращаем тестовые данные
-        history = await self.get_confirmation_history()
-        
-        if not history:
+        try:
+            if not self.confirmation_history:
+                return {
+                    'total_confirmations': 0,
+                    'today_confirmations': 0,
+                    'recent_confirmations': 'Нет подтверждений',
+                    'popular_subscriptions': 'Нет данных'
+                }
+            
+            total_confirmations = len(self.confirmation_history)
+            
+            # Подсчет за сегодня
+            today_confirmations = sum(1 for conf in self.confirmation_history 
+                                    if datetime.now().date() == conf.get('timestamp', datetime.now()).date())
+            
+            # Последние подтверждения (последние 3)
+            recent_confirmations = []
+            for conf in self.confirmation_history[-3:]:
+                username = conf.get('username', 'unknown')
+                subscription_type = conf.get('subscription_type', 'unknown')
+                recent_confirmations.append(f"• {username} - {subscription_type}")
+            
+            recent_confirmations_text = '\n'.join(recent_confirmations) if recent_confirmations else 'Нет подтверждений'
+            
+            # Популярные подписки
+            subscription_counts = {}
+            for conf in self.confirmation_history:
+                sub_type = conf.get('subscription_type', 'unknown')
+                subscription_counts[sub_type] = subscription_counts.get(sub_type, 0) + 1
+            
+            # Сортируем и формируем топ-3
+            popular_subs = sorted(subscription_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+            popular_text = '\n'.join([f"• {sub_type}: {count}" for sub_type, count in popular_subs]) if popular_subs else 'Нет данных'
+            
             return {
-                'stars_count': 0, 'ton_count': 0,
-                'stars_percentage': 0, 'ton_percentage': 0,
-                '25_stars': 0, '50_stars': 0, '75_stars': 0, '100_stars': 0,
-                '50_ton': 0, '100_ton': 0, '150_ton': 0
+                'total_confirmations': total_confirmations,
+                'today_confirmations': today_confirmations,
+                'recent_confirmations': recent_confirmations_text,
+                'popular_subscriptions': popular_text
             }
-        
-        # Подсчет статистики
-        stars_count = sum(1 for conf in history if 'stars' in conf['subscription_type'])
-        ton_count = sum(1 for conf in history if 'ton' in conf['subscription_type'])
-        total = len(history)
-        
-        stats = {
-            'stars_count': stars_count,
-            'ton_count': ton_count,
-            'stars_percentage': round((stars_count / total * 100) if total > 0 else 0),
-            'ton_percentage': round((ton_count / total * 100) if total > 0 else 0),
-            '25_stars': sum(1 for conf in history if conf['subscription_type'] == '25_stars'),
-            '50_stars': sum(1 for conf in history if conf['subscription_type'] == '50_stars'),
-            '75_stars': sum(1 for conf in history if conf['subscription_type'] == '75_stars'),
-            '100_stars': sum(1 for conf in history if conf['subscription_type'] == '100_stars'),
-            '50_ton': sum(1 for conf in history if conf['subscription_type'] == '50_ton'),
-            '100_ton': sum(1 for conf in history if conf['subscription_type'] == '100_ton'),
-            '150_ton': sum(1 for conf in history if conf['subscription_type'] == '150_ton')
-        }
-        
-        return stats
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения статистики: {e}")
+            return {
+                'total_confirmations': 0,
+                'today_confirmations': 0,
+                'recent_confirmations': 'Ошибка получения данных',
+                'popular_subscriptions': 'Ошибка получения данных'
+            }
 
     async def confirmpay_back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик возврата в главное меню /confirmpay - ИСПРАВЛЕНО"""
+        """Обработчик возврата к меню /confirmpay - ИСПРАВЛЕНО"""
         logger.info(f"КОМАНДА /confirmpay back от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # Удаляем пользователя из ожидающих ввод
+            # Очищаем ожидающий ввод для пользователя
             if query.from_user.id in self.confirmpay_pending_users:
                 del self.confirmpay_pending_users[query.from_user.id]
 
-            # Главное меню подтверждения оплаты
+            # Возвращаемся к главному меню /confirmpay
             keyboard = [
                 [InlineKeyboardButton("⭐ 25 звезд", callback_data="confirmpay_type_25_stars"),
                  InlineKeyboardButton("⭐ 50 звезд", callback_data="confirmpay_type_50_stars")],
@@ -1163,8 +1294,7 @@ ID: {user.id}
 Username: {message_text}
 Тип подписки: {subscription_type}
 
-После подтверждения пользователю будет отправлена ссылка на закрытый канал.
-                """
+После подтверждения пользователю будет отправлена ссылка на закрытый канал."""
                 
                 keyboard = [
                     [InlineKeyboardButton(
