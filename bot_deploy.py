@@ -864,27 +864,38 @@ ID: {user.id}
     async def get_invite_link_for_subscription(self, subscription_type: str) -> Optional[str]:
         """Получение пригласительной ссылки для типа подписки - ИСПРАВЛЕНО"""
         try:
+            # Используем ключи из PRIVATE_CHANNEL_LINKS
+            if subscription_type in self.config.PRIVATE_CHANNEL_LINKS:
+                return self.config.PRIVATE_CHANNEL_LINKS[subscription_type]
+            
+            # Обратная совместимость - обработка по частям
             subscription_lower = subscription_type.lower()
             
             # Stars подписки
             if "stars" in subscription_lower:
                 if "25" in subscription_lower:
-                    return self.config.STARS_CHANNEL_INVITE_LINKS[0] if len(self.config.STARS_CHANNEL_INVITE_LINKS) > 0 else "Stars канал недоступен"
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("25_stars", "Stars канал недоступен")
                 elif "50" in subscription_lower:
-                    return self.config.STARS_CHANNEL_INVITE_LINKS[1] if len(self.config.STARS_CHANNEL_INVITE_LINKS) > 1 else "Stars канал недоступен"
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("50_stars", "Stars канал недоступен")
                 elif "75" in subscription_lower:
-                    return self.config.STARS_CHANNEL_INVITE_LINKS[2] if len(self.config.STARS_CHANNEL_INVITE_LINKS) > 2 else "Stars канал недоступен"
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("75_stars", "Stars канал недоступен")
                 elif "100" in subscription_lower:
-                    return self.config.STARS_CHANNEL_INVITE_LINKS[3] if len(self.config.STARS_CHANNEL_INVITE_LINKS) > 3 else "Stars канал недоступен"
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("100_stars", "Stars канал недоступен")
+                elif "150" in subscription_lower:
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("150_stars", "Stars канал недоступен")
+                elif "200" in subscription_lower:
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("200_stars", "Stars канал недоступен")
+                elif "250" in subscription_lower:
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("250_stars", "Stars канал недоступен")
             
             # TON подписки  
             elif "ton" in subscription_lower:
-                if "150" in subscription_lower:
-                    return self.config.TON_CHANNEL_INVITE_LINKS[0] if len(self.config.TON_CHANNEL_INVITE_LINKS) > 0 else "TON канал недоступен"
+                if "50" in subscription_lower:
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("50_ton", "TON канал недоступен")
                 elif "100" in subscription_lower:
-                    return self.config.TON_CHANNEL_INVITE_LINKS[1] if len(self.config.TON_CHANNEL_INVITE_LINKS) > 1 else "TON канал недоступен"
-                elif "50" in subscription_lower:
-                    return self.config.TON_CHANNEL_INVITE_LINKS[2] if len(self.config.TON_CHANNEL_INVITE_LINKS) > 2 else "TON канал недоступен"
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("100_ton", "TON канал недоступен")
+                elif "150" in subscription_lower:
+                    return self.config.PRIVATE_CHANNEL_LINKS.get("150_ton", "TON канал недоступен")
             
             return None
             
