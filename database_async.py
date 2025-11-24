@@ -124,6 +124,27 @@ class AsyncDatabaseManager:
                 logger.info(f"✅ Пользователь {user_id} создан в базе данных")
                 return referral_code
     
+    async def get_user_by_username(self, username: str) -> Optional[Dict]:
+        """Поиск пользователя по username для автоотправки ссылок"""
+        async with self._lock:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute(
+                    "SELECT id, username, first_name, last_name, referral_code, created_at FROM users WHERE username = ?",
+                    (username,)
+                )
+                row = await cursor.fetchone()
+                await cursor.close()
+                if row:
+                    return {
+                        'id': row[0],
+                        'username': row[1],
+                        'first_name': row[2],
+                        'last_name': row[3],
+                        'referral_code': row[4],
+                        'created_at': row[5]
+                    }
+                return None
+    
     async def save_pending_referral(self, user_id: int, referrer_id: int):
         """Сохранение информации о временном реферале"""
         async with self._lock:
