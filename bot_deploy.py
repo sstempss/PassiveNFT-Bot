@@ -34,10 +34,10 @@ from telegram.ext import (
 from telegram.error import BadRequest, TelegramError
 
 # Import config
-from config_deploy_new_ПОЛНЫЙ_ИСПРАВЛЕННЫЙ import Config
+from config_deploy_new import Config
 
 # Import database
-from database_async_ПОЛНЫЙ_ИСПРАВЛЕННЫЙ import DatabaseAsync
+from database_async import DatabaseAsync
 
 # ===== НАСТРОЙКА ЛОГИРОВАНИЯ =====
 logging.basicConfig(
