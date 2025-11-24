@@ -785,23 +785,21 @@ ID: {user.id}
             self.confirmpay_pending_users[query.from_user.id] = subscription_type
             
             # Отправляем инструкции для выбранного типа
-            message_text = f"""
-✅ **ПОДТВЕРЖДЕНИЕ ОПЛАТЫ**
+            message_text = f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
 
-**Тип подписки:** {subscription_type}
+Тип подписки: {subscription_type}
 
-**Введите username пользователя без @**
+Введите username пользователя без @
 
-**Например:** `testuser` или `username123`
+Например: testuser или username123
 
-После ввода username будет показана кнопка для подтверждения подписки.
-            """
+После ввода username будет показана кнопка для подтверждения подписки."""
 
             # Кнопка отмены
             keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="confirmpay_back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await query.message.edit_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.message.edit_text(message_text, reply_markup=reply_markup)
             logger.info(f"✅ /confirmpay type {subscription_type} показано пользователю {update.effective_user.id}")
             
         except Exception as e:
@@ -833,27 +831,26 @@ ID: {user.id}
             
             if not invite_link:
                 await query.message.edit_text(
-                    f"❌ **ОШИБКА**\n\n"
+                    f"❌ ОШИБКА\n\n"
                     f"Не найдена ссылка для типа: {subscription_type}\n"
-                    f"Пожалуйста, обратитесь к администратору.",
-                    parse_mode='Markdown'
+                    f"Пожалуйста, обратитесь к администратору."
                 )
                 return
 
             # Отправляем подтверждение админу
-            confirmation_text = f"""✅ **ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ВЫПОЛНЕНО**
+            confirmation_text = f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ВЫПОЛНЕНО
 
-**Администратор:** @{query.from_user.username or query.from_user.first_name}
-**Пользователь:** @{username}
-**Тип подписки:** {subscription_type}
-**Время:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Администратор: {query.from_user.username or query.from_user.first_name}
+Пользователь: {username}
+Тип подписки: {subscription_type}
+Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
-**Ссылка отправлена пользователю:**
+Ссылка отправлена пользователю:
 {invite_link}
 
-**Система подтверждения оплат:** Активна ✅"""
+Система подтверждения оплат: Активна ✅"""
 
-            await query.message.edit_text(confirmation_text, parse_mode='Markdown')
+            await query.message.edit_text(confirmation_text)
             
             # Сохраняем в историю подтверждений (база данных)
             await self.save_confirmation_to_history(username, subscription_type, query.from_user.id)
@@ -919,11 +916,9 @@ ID: {user.id}
             history_data = await self.get_confirmation_history()
             
             if not history_data:
-                history_text = """📊 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ**
-
-❌ История пуста - подтверждений пока не было"""
+                history_text = "📊 ИСТОРИЯ ПОДТВЕРЖДЕНИЙ\n\n❌ История пуста - подтверждений пока не было"
             else:
-                history_text = "📊 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ**\n\n"
+                history_text = "📊 ИСТОРИЯ ПОДТВЕРЖДЕНИЙ\n\n"
                 
                 # Показываем последние 5 подтверждений
                 for i, confirmation in enumerate(history_data[-5:], 1):
@@ -931,19 +926,19 @@ ID: {user.id}
                     subscription_type = confirmation.get('subscription_type', 'unknown')
                     time_str = confirmation.get('time', 'время неизвестно')
                     
-                    history_text += f"• @{username} - {subscription_type} ({time_str})\n"
+                    history_text += f"• {username} - {subscription_type} ({time_str})\n"
                 
-                history_text += f"\n**Всего подтверждено:** {len(history_data)}"
+                history_text += f"\nВсего подтверждено: {len(history_data)}"
                 
                 # Подсчет за сегодня
                 today_count = sum(1 for conf in history_data 
                                 if datetime.now().date() == conf.get('date', datetime.now()).date())
-                history_text += f"\n**Сегодня:** {today_count}"
+                history_text += f"\nСегодня: {today_count}"
 
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await query.message.edit_text(history_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.message.edit_text(history_text, reply_markup=reply_markup)
             logger.info(f"✅ История подтверждений показана пользователю {query.from_user.id}")
             
         except Exception as e:
