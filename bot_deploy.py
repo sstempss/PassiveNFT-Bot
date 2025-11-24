@@ -702,6 +702,7 @@ class PassiveNFTBot:
             # ИСПРАВЛЕНО: Сначала проверяем базу данных на наличие пользователя
             users = await self.database.get_all_users(limit=100)
             user_found = None
+            hidden_users = []
             
             # Сначала ищем по username (если username не начинается с @)
             search_username = username.lstrip('@')
@@ -709,6 +710,9 @@ class PassiveNFTBot:
                 if user['username'] == search_username or f"@{user['username']}" == username:
                     user_found = user
                     break
+                # Собираем пользователей без username для диагностики
+                if user['username'] == 'без username':
+                    hidden_users.append(user)
             
             # Если не найден по username, пробуем найти по user_id
             if not user_found:
@@ -755,12 +759,6 @@ class PassiveNFTBot:
             else:
                 logger.warning(f"⚠️ Пользователь @{username} не найден в базе данных")
                 
-                # ИСПРАВЛЕНО: Дополнительная проверка пользователей без username
-                hidden_users = []
-                for user in users:
-                    if user['username'] == 'без username':
-                        hidden_users.append(user)
-                
                 if hidden_users:
                     logger.warning(f"🔍 Найдено {len(hidden_users)} пользователей без username в базе")
             
@@ -789,6 +787,8 @@ class PassiveNFTBot:
                 if len(hidden_users) > 10:
                     admin_message += f"... и еще {len(hidden_users) - 10} пользователей\n"
                 admin_message += "\nВозможно, @{username} скрыл свой username в настройках Telegram"
+
+            admin_message += f"""
 
 **Данные для ручной отправки:**
 {message_text}
