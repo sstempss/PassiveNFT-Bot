@@ -815,9 +815,9 @@ ID: {user.id}
 
             # Извлекаем username и тип подписки
             data_parts = query.data.split('_')
-            if len(data_parts) >= 4:
-                username = data_parts[3]  # confpay_confirm_USERNAME_TYPE
-                subscription_type = '_'.join(data_parts[4:])  # остальная часть
+            if len(data_parts) >= 5:  # confirmpay_confirm_USERNAME_TYPE (минимум 5 частей)
+                username = data_parts[2]  # confirmpay_confirm_USERNAME_TYPE
+                subscription_type = data_parts[3] + '_' + data_parts[4]  # 25_stars
             else:
                 await query.answer("❌ Ошибка: неверный формат данных")
                 return
