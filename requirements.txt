@@ -1,5 +1,40 @@
-# Зависимости для PassiveNFT Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ
-python-telegram-bot>=21.0
+# Основные зависимости для PassiveNFT Bot с реферальной системой
+
+# Telegram Bot Framework
+python-telegram-bot==21.0
+
+# Асинхронная база данных
+aiosqlite==0.19.0
+
+# HTTP сервер для webhook
 aiohttp==3.9.1
-sqlalchemy
-aiosqlite
+
+# Дополнительные утилиты
+python-dotenv==1.0.0
+
+# Логирование и отладка
+colorlog==6.7.0
+
+# Математические вычисления (для расчета комиссий)
+numpy==1.24.3
+
+# Обработка времени и дат
+python-dateutil==2.8.2
+
+# Валидация данных
+pydantic==2.5.0
+
+# Асинхронные задачи
+asyncio-mqtt==0.16.1
+
+# Дополнительные функции для работы с JSON
+orjson==3.9.10
+
+# Криптографические функции
+cryptography==41.0.8
+
+# HTTP клиент
+httpx==0.25.2
+
+# Параллельная обработка
+concurrent-futures==3.1.1
