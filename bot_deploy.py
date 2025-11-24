@@ -788,9 +788,9 @@ class PassiveNFTBot:
                     admin_message += f"{i}. ID: {user['user_id']}, создан: {user['created_at']}\n"
                 if len(hidden_users) > 10:
                     admin_message += f"... и еще {len(hidden_users) - 10} пользователей\n"
-                admin_message += "\n⚠️ Возможно, @{username} скрыл свой username в настройках Telegram"
+                admin_message += "\nВозможно, @{username} скрыл свой username в настройках Telegram"
 
-⚡ **Данные для ручной отправки:**
+**Данные для ручной отправки:**
 {message_text}
 """
             
