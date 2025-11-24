@@ -229,7 +229,7 @@ class Config:
     
     def get_admin_usernames(self):
         """Получение списка админов по username"""
-        return ["pro.player.egor", "admin"]
+        return []
 
 # Создаем глобальный экземпляр конфигурации
 config = Config()
