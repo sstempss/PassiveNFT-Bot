@@ -697,6 +697,40 @@ class AsyncDatabaseManager:
             logger.error(f"❌ Ошибка получения пользователя @{username}: {e}")
             return None
     
+    async def check_subscription_access(self, user_id: int, subscription_amount: int, subscription_type: str) -> Dict:
+        """
+        Проверка доступа пользователя к каналу подписки
+        """
+        try:
+            async with self._lock:
+                async with aiosqlite.connect(self.db_path) as db:
+                    # Проверяем наличие записи о подписке в базе данных
+                    cursor = await db.execute("""
+                        SELECT * FROM subscriptions 
+                        WHERE user_id = ? AND subscription_type = ? AND amount = ? AND status = 'active'
+                    """, (user_id, subscription_type, subscription_amount))
+                    
+                    row = await cursor.fetchone()
+                    await cursor.close()
+                    
+                    if row:
+                        return {
+                            'has_access': True,
+                            'subscription_data': dict(row)
+                        }
+                    else:
+                        return {
+                            'has_access': False,
+                            'subscription_data': None
+                        }
+                        
+        except Exception as e:
+            logger.error(f"❌ Ошибка проверки доступа пользователя {user_id}: {e}")
+            return {
+                'has_access': False,
+                'subscription_data': None
+            }
+    
     async def close(self):
         """Корректное закрытие соединения с базой данных"""
         logger.info("🔒 Асинхронная база данных закрыта")
