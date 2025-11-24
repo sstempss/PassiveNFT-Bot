@@ -155,9 +155,6 @@ class PassiveNFTBot:
         # Подтверждение оплаты - ГЛАВНАЯ КОМАНДА
         self.application.add_handler(CommandHandler("confirmpay", self.confirmpay_command))
         
-        # Подтверждение оплаты (старая команда из бэкапа)
-        self.application.add_handler(CommandHandler("confirm_payment", self.confirm_payment_command))
-        
         # Callback handlers для подтверждения оплаты
         self.application.add_handler(CallbackQueryHandler(
             self.confirmpay_subscription_type_callback, 
