@@ -399,12 +399,11 @@ class PassiveNFTBot:
                 if query.from_user.id in self.confirmation_queue:
                     del self.confirmation_queue[query.from_user.id]
                 
-                # ИСПРАВЛЕНО: вызываем confirmpay_command с правильными параметрами
-                # Создаем временный объект Update для передачи в confirmpay_command
-                temp_update = Update(
-                    message=query.message,
-                    effective_user=query.from_user
-                )
+                # ИСПРАВЛЕНО: используем query.message для создания Update без effective_user
+                # Создаем Update объект правильно (без effective_user параметра)
+                temp_update = Update(update_id=query.message.update_id, message=query.message)
+                # Устанавливаем effective_user вручную
+                temp_update._effective_user = query.from_user
                 await self.confirmpay_command(temp_update, context)
                 
                 logger.info(f"✅ Возврат к меню /confirmpay для пользователя {query.from_user.id}")
@@ -698,44 +697,80 @@ class PassiveNFTBot:
             raise e
     
     async def send_safe_message_to_user(self, username: str, message_text: str, context: ContextTypes.DEFAULT_TYPE):
-        """Безопасная отправка сообщения пользователю"""
+        """Улучшенная безопасная отправка сообщения пользователю с проверкой БД"""
         try:
-            # Сначала пытаемся получить user_id через метод get_chat
-            try:
-                chat = await context.bot.get_chat(f"@{username}")
-                if chat.type == 'private':
-                    # Прямая отправка по user_id
-                    await context.bot.send_message(
-                        chat_id=chat.id,
-                        text=message_text,
-                        parse_mode='Markdown'
-                    )
-                    logger.info(f"✅ Сообщение отправлено пользователю {username} через get_chat")
-                    return
-            except TelegramError as e:
-                logger.warning(f"⚠️ Не удалось получить чат через @{username}: {e}")
+            # ИСПРАВЛЕНО: Сначала проверяем базу данных на наличие пользователя
+            users = await self.database.get_all_users(limit=100)
+            user_found = None
             
-            # Если get_chat не сработал, пытаемся использовать resolve_username через get_chat_member
-            try:
-                # Пытаемся получить информацию о пользователе как участнике бота
-                bot_info = await context.bot.get_me()
+            # Сначала ищем по username (если username не начинается с @)
+            search_username = username.lstrip('@')
+            for user in users:
+                if user['username'] == search_username or f"@{user['username']}" == username:
+                    user_found = user
+                    break
+            
+            # Если не найден по username, пробуем найти по user_id
+            if not user_found:
                 try:
-                    member = await context.bot.get_chat_member(bot_info.id, username)
-                    # Если пользователь является участником чата бота
-                    if member.status in ['member', 'administrator', 'creator']:
-                        # Попытка отправить через chat_id бота
-                        await context.bot.send_message(
-                            chat_id=bot_info.id,
-                            text=f"📬 Сообщение для @{username}:\n\n{message_text}"
-                        )
-                        logger.info(f"⚠️ Сообщение для {username} отправлено через бота (возможно недоступен)")
-                        return
-                except:
+                    # Проверяем, может ли username быть числовым ID
+                    potential_user_id = int(username.lstrip('@'))
+                    for user in users:
+                        if user['user_id'] == potential_user_id:
+                            user_found = user
+                            search_username = None  # Будем использовать user_id для отправки
+                            break
+                except (ValueError, TypeError):
+                    # Не числовой ID, продолжаем как обычный username
                     pass
-            except Exception as e:
-                logger.warning(f"⚠️ Ошибка при попытке resolve_username для {username}: {e}")
             
-            # Если все методы не сработали, информируем админа
+            # Если найден в базе данных
+            if user_found:
+                logger.info(f"👤 Пользователь найден в БД (ID: {user_found['user_id']}, username: {user_found['username']})")
+                
+                # Отправляем сообщение
+                try:
+                    if search_username:
+                        # Отправляем через username
+                        chat = await context.bot.get_chat(f"@{search_username}")
+                        if chat.type == 'private':
+                            await context.bot.send_message(
+                                chat_id=chat.id,
+                                text=message_text,
+                                parse_mode='Markdown'
+                            )
+                            logger.info(f"✅ Сообщение отправлено пользователю @{search_username} через get_chat")
+                            return
+                    else:
+                        # Отправляем напрямую по user_id
+                        await context.bot.send_message(
+                            chat_id=user_found['user_id'],
+                            text=message_text,
+                            parse_mode='Markdown'
+                        )
+                        logger.info(f"✅ Сообщение отправлено напрямую пользователю ID: {user_found['user_id']}")
+                        return
+                except TelegramError as e:
+                    logger.warning(f"⚠️ Не удалось отправить через API: {e}")
+            else:
+                logger.warning(f"⚠️ Пользователь @{username} не найден в базе данных")
+                
+                # ИСПРАВЛЕНО: Дополнительная проверка пользователей без username
+                hidden_users = []
+                for user in users:
+                    if user['username'] == 'без username':
+                        hidden_users.append(user)
+                
+                if hidden_users:
+                    logger.warning(f"🔍 Найдено {len(hidden_users)} пользователей без username в базе")
+            
+            # Если не удалось отправить напрямую, информируем админа с инструкциями
+            link_url = "ссылка недоступна"
+            if 'Ссылка:' in message_text:
+                link_parts = message_text.split('Ссылка:')
+                if len(link_parts) > 1:
+                    link_url = link_parts[1].split('\n')[0].strip()
+            
             admin_message = f"""❌ **НЕВОЗМОЖНО ОТПРАВИТЬ СООБЩЕНИЕ**
 
 👤 **Пользователь:** @{username}
@@ -743,18 +778,30 @@ class PassiveNFTBot:
 
 🔧 **Решение:** 
 • Попросите пользователя написать /start боту
-• Или отправьте ссылку вручную: {message_text.split('Ссылка: ')[1].split()[0] if 'Ссылка: ' in message_text else 'ссылка недоступна'}
+• Или отправьте ссылку вручную: {link_url}
+"""
+
+            # ДОБАВЛЕНО: Информация о пользователях без username для диагностики
+            if hidden_users:
+                admin_message += f"\n\n🔍 **ПОЛЬЗОВАТЕЛИ БЕЗ USERNAME В БД ({len(hidden_users)}):**\n"
+                for i, user in enumerate(hidden_users[:10], 1):  # Показываем только первых 10
+                    admin_message += f"{i}. ID: {user['user_id']}, создан: {user['created_at']}\n"
+                if len(hidden_users) > 10:
+                    admin_message += f"... и еще {len(hidden_users) - 10} пользователей\n"
+                admin_message += "\n⚠️ Возможно, @{username} скрыл свой username в настройках Telegram"
 
 ⚡ **Данные для ручной отправки:**
 {message_text}
 """
             
+            # Отправляем админу инструкции
+            admin_id = context._user_id or self.config.ADMIN_USER_IDS[0]
             await context.bot.send_message(
-                chat_id=context._user_id or self.config.ADMIN_USER_IDS[0],  # Fallback к первому админу
+                chat_id=admin_id,
                 text=admin_message,
                 parse_mode='Markdown'
             )
-            logger.warning(f"⚠️ Не удалось отправить сообщение пользователю @{username}, админ уведомлен")
+            logger.warning(f"⚠️ Инструкции по отправке сообщения для @{username} отправлены админу")
             
         except Exception as e:
             logger.error(f"❌ Критическая ошибка при отправке сообщения пользователю @{username}: {e}")
