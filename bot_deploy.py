@@ -438,10 +438,6 @@ class PassiveNFTBot:
                 pattern="^confirmpay_stats$"
             ))
             self.application.add_handler(CallbackQueryHandler(
-                self.confpay_confirm_callback, 
-                pattern="^confpay_confirm_"
-            ))
-            self.application.add_handler(CallbackQueryHandler(
                 self.confirmpay_back_callback, 
                 pattern="^confirmpay_back$"
             ))
