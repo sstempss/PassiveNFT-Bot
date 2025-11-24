@@ -894,7 +894,7 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            stars_text = """ ⭐ **ПОДПИСКИ ЗА ЗВЕЗДОЧКИ**
+            stars_text = """**ПОДПИСКИ ЗА ЗВЕЗДОЧКИ**
 
 Доступные тарифы с активностями:
 
