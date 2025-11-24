@@ -632,3 +632,7 @@ class AsyncDatabaseManager:
         except Exception as e:
             logger.error(f"Ошибка проверки доступа: {e}")
             return {'has_access': False, 'subscription_count': 0}
+
+
+# Алиас для обратной совместимости с bot_deploy.py
+DatabaseAsync = AsyncDatabaseManager
