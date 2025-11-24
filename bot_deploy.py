@@ -39,10 +39,10 @@ from telegram.ext import (
 from telegram.error import BadRequest, TelegramError
 
 # Import config
-from config_deploy_fixed import Config
+from config_deploy_new import Config
 
 # Import database
-from database_async_fixed import AsyncDatabaseManager
+from database_async import AsyncDatabaseManager
 
 # ===== НАСТРОЙКА ЛОГИРОВАНИЯ =====
 logging.basicConfig(
@@ -468,7 +468,7 @@ class PassiveNFTBot:
         
         try:
             # Получаем историю из базы данных
-            recent_logs = await self.database.get_confirmation_history(limit=10)
+            recent_logs = await self.database.get_recent_confirmation_logs(limit=10)
             
             if not recent_logs:
                 message_text = """📊 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ**
@@ -676,21 +676,48 @@ class PassiveNFTBot:
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка при поиске реферера для @{username}: {e}")
             
-            # Обрабатываем подтверждение оплаты с реферальной системой
-            referral_result = await self.database.process_payment_confirmation_with_referral(
+            # Создаем или обновляем пользователя в базе данных
+            await self.database.get_or_create_user(
+                user_id=hash(username) % 1000000000,
                 username=username,
-                subscription_type=subscription_type,
-                subscription_amount=subscription_amount,
-                payment_method=payment_method,
-                admin_id=update.effective_user.id,
-                referrer_id=pending_referrer
+                first_name=username,
+                last_name=""
             )
+            
+            # Добавляем подписку
+            await self.database.add_subscription(
+                user_id=hash(username) % 1000000000,
+                subscription_type=subscription_type,
+                payment_method=payment_method,
+                amount=subscription_amount,
+                currency=payment_method
+            )
+            
+            # Логируем подтверждение оплаты
+            await self.database.save_confirmation_log({
+                'admin_id': update.effective_user.id,
+                'subscription_type': subscription_type,
+                'username': username,
+                'link_id': secure_link
+            })
+            
+            # Если есть реферер, начисляем комиссию
+            if pending_referrer:
+                commission = await self.database.calculate_commission(
+                    subscription_amount, subscription_type, payment_method
+                )
+                
+                if commission > 0:
+                    await self.database.add_referral_earnings(
+                        referrer_id=pending_referrer,
+                        referred_id=hash(username) % 1000000000,
+                        commission_amount=commission,
+                        subscription_type=subscription_type,
+                        payment_method=payment_method
+                    )
             
             # Отправляем ссылку пользователю
             await self.send_subscription_link_to_user(username, subscription_type, secure_link, context)
-            
-            # Логируем подтверждение
-            await self.log_payment_confirmation(username, subscription_type, update.effective_user.id, secure_link)
             
             # ИНФОРМИРУЕМ АДМИНА О РЕЗУЛЬТАТАХ
             admin_report = f"""✅ **ПОДТВЕРЖДЕНИЕ ЗАВЕРШЕНО**
@@ -914,7 +941,7 @@ class PassiveNFTBot:
                 return
 
             # Получаем детальную реферальную статистику
-            detailed_stats = await self.database.get_detailed_referral_stats()
+            detailed_stats = await self.database.get_referral_stats()
             
             if not detailed_stats:
                 referral_text = """🔗 **РЕФЕРАЛЬНАЯ СТАТИСТИКА**
@@ -972,7 +999,12 @@ class PassiveNFTBot:
             username = parts[1].replace('@', '')  # Убираем @ если есть
             
             # Получаем статистику по username
-            user_stats = await self.database.get_referral_stats_by_username(username)
+            # Получаем статистику для пользователя по username
+            user_data = await self.database.get_user_by_username(username)
+            if user_data:
+                user_stats = await self.database.get_user_referral_stats(user_data['id'])
+            else:
+                user_stats = "Пользователь не найден"
             
             if not user_stats:
                 await update.message.reply_text(f"📊 Статистика для @{username} не найдена.\nПользователь может не существовать или не иметь рефералов.")
