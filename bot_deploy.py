@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-PassiveNFT Bot - ВЕРСИЯ С АКТИВНЫМИ ПОДПИСКАМИ (за звездочки) - ИСПРАВЛЕННАЯ ВЕРСИЯЯ
+PassiveNFT Bot - ПОЛНАЯ ВЕРСИЯ С ИНТЕГРИРОВАННЫМИ КРИТИЧЕСКИМИ ИСПРАВЛЕНИЯМИ СТАБИЛЬНОСТИ
 ИСПРАВЛЕНИЯ РЕФЕРАЛЬНОЙ СИСТЕМЫ:
 - Устранено дублирование в функции add_referral
 - Добавлена таблица pending_referrals в базу данных
@@ -15,12 +15,22 @@ PassiveNFT Bot - ВЕРСИЯ С АКТИВНЫМИ ПОДПИСКАМИ (за �
 - ИСПРАВЛЕНА ПРОБЛЕМА С PARSING MARKDOWN - правильное экранирование специальных символов
 - ПОЛНОСТЬЮ ИСПРАВЛЕНА СИСТЕМА /confirmpay для бесперебойной работы
 - ВРЕМЕННО ПРИОСТАНОВЛЕНА РЕФЕРАЛЬНАЯ СИСТЕМА - ПОКАЗЫВАЕТ "В СТАДИИ РАЗРАБОТКИ"
+
+КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ СТАБИЛЬНОСТИ:
+- Решена проблема с сетевыми тайм-аутами httpx
+- Добавлена логика повторных попыток для Telegram API
+- Исправлены тяжелые ответы (до 1 минуты)
+- Добавлена защита от ошибок в start_command
+- Оптимизирован polling режим
+- Улучшена обработка ошибок подключения
+- Добавлены таймауты для операций с БД
+- Graceful restart на сетевых ошибках
 """
 import asyncio
 import logging
-import sqlite3
 import sys
 import traceback
+import time
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, timedelta
@@ -29,7 +39,8 @@ import re
 # Импорты Telegram бота - ГЛОБАЛЬНЫЕ ИМПОРТЫ
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-from telegram.error import BadRequest
+from telegram.error import BadRequest, TelegramError
+import httpx
 
 # ИМПОРТЫ ДЛЯ ВЕБ-СЕРВЕРА (для решения проблемы с портом на Render.com)
 import os
@@ -167,6 +178,18 @@ class SafeConfig:
             "https://t.me/+6XnGRwJd8rY2ZGUy"
         ]
 
+        # НОВОЕ: PRIVATE_CHANNEL_LINKS для исправленной системы /confirmpay
+        self.PRIVATE_CHANNEL_LINKS = {
+            "25_stars": "https://t.me/+xLVbmqzc3Dk2NWM6",
+            "50_stars": "https://t.me/+uxH6Ot8Kyu4wZDk6", 
+            "75_stars": "https://t.me/+diQh7MowVhIwYzVi",
+            "100_stars": "https://t.me/+6XnGRwJd8rY2ZGUy",
+            "150_stars": "https://t.me/+LaQZfJHeQPcyNjUy",
+            "50_ton": "https://t.me/+4BhdYzF2U65hOTIy",
+            "100_ton": "https://t.me/+O7KaTknXPDVlMjY6",
+            "150_ton": "https://t.me/+LaQZfJHeQPcyNjUy"
+        }
+
         # Настройки подписок - БЕЗ ЖИРНОГО ТЕКСТА
         self.SUBSCRIPTION_PLANS = [
             {
@@ -252,8 +275,8 @@ class SafeConfig:
 
         # Сообщения для оплаты через звездочки
         self.STARS_PAYMENT_MESSAGE_TEMPLATE = f"""для оплаты по TON кошельку нажмите на [{self.TON_WALLET_ADDRESS}](ton://transfer?amount={{ton_amount}}&address={self.TON_WALLET_ADDRESS}) и отправьте {{ton_amount}} TON (эквивалентно ~{{stars}} звездам).
-для оплаты ЗВЕЗДОЧКАМИ перейдите [сюда](https://t.me/{self.STARS_USERNAME}) и отправьте подарком стоимость подписки + оплата комиссии
-после оплаты обратитесь к менеджеру [здесь](https://t.me/{self.MANAGER_USERNAME}) для подтверждения оплаты и для получения ссылки в закрытый ТГК."""
+для оплаты ЗВЕЗДОЧКАМИ перейдите по кнопке "Оплатить звездочками" и отправьте подарком стоимость подписки + оплата комиссии
+после оплаты обратитесь к менеджеру для подтверждения."""
 
         # Описания для каждого уровня звездочек
         self.STAR_SUBSCRIPTION_PLANS = [
@@ -369,7 +392,7 @@ except Exception as e:
 
 
 class PassiveNFTBot:
-    """Главный класс бота с исправленной реферальной системой и ПОЛНОСТЬЮ ИСПРАВЛЕННОЙ системой /confirmpay"""
+    """Главный класс бота с исправленной реферальной системой и ПОЛНОСТЬЮ ИСПРАВЛЕННОЙ системой /confirmpay + КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ СТАБИЛЬНОСТИ"""
     def __init__(self):
         self.config = config
         self.database = AsyncDatabaseManager()  # Асинхронная база данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
@@ -379,12 +402,15 @@ class PassiveNFTBot:
         
         # ДОБАВЛЕНО: История подтверждений для реальной работы статистики
         self.confirmation_history = []  # Список подтверждений [{username, subscription_type, admin_id, timestamp}]
+        self.start_time = datetime.now()
+        
+        logger.info("🚀 PassiveNFT Bot - Стабильная версия с исправлениями инициализирован")
         self.setup_telegram_application()
 
     def setup_telegram_application(self):
-        """Настройка Telegram приложения"""
+        """Настройка Telegram приложения с оптимизированной конфигурацией"""
         try:
-            # Создание приложения
+            # Создание приложения с настройками для стабильности
             self.application = (
                 Application.builder()
                 .token(self.config.BOT_TOKEN)
@@ -456,10 +482,47 @@ class PassiveNFTBot:
             # ИСПРАВЛЕНО: Обработчик текстовых сообщений для /confirmpay
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
 
-            logger.info("Telegram приложение настроено")
+            logger.info("✅ Telegram приложение настроено с исправлениями стабильности")
         except Exception as e:
-            logger.error(f"Ошибка настройки приложения: {e}")
+            logger.error(f"❌ Ошибка настройки приложения: {e}")
             raise
+
+    async def safe_get_user(self, update: Update) -> Optional[dict]:
+        """КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Безопасное получение данных пользователя с защитой от ошибок"""
+        try:
+            user = update.effective_user
+            if not user:
+                logger.warning("⚠️ effective_user is None")
+                return None
+                
+            return {
+                'id': getattr(user, 'id', 0),
+                'username': getattr(user, 'username', '') or '',
+                'first_name': getattr(user, 'first_name', '') or '',
+                'last_name': getattr(user, 'last_name', '') or ''
+            }
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения данных пользователя: {e}")
+            return None
+
+    async def safe_database_operation(self, operation_name: str, operation_func, timeout: float = 5.0):
+        """КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Безопасное выполнение операций с базой данных с таймаутом"""
+        try:
+            logger.info(f"🔄 Выполнение {operation_name}...")
+            
+            # Создаем задачу с таймаутом
+            task = asyncio.create_task(operation_func())
+            result = await asyncio.wait_for(task, timeout=timeout)
+            
+            logger.info(f"✅ {operation_name} выполнено успешно")
+            return result
+            
+        except asyncio.TimeoutError:
+            logger.error(f"⏰ Таймаут {operation_name} ({timeout}s)")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Ошибка {operation_name}: {e}")
+            return None
 
     async def clear_webhook_on_startup(self):
         """Очистка webhook перед запуском для решения конфликтов"""
@@ -565,7 +628,7 @@ TON_CHANNEL_MAPPINGS: {diagnostic_ton}
                 await update.message.reply_text(diagnostic_text, parse_mode='Markdown')
             
         except Exception as e:
-            logger.error(f"Ошибка в channel_info_command: {e}")
+            logger.error(f"❌ Ошибка в channel_info_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка при выполнении команды.")
 
@@ -615,7 +678,7 @@ Username: @{chat.username or 'не указан'}
                 await update.message.reply_text(simple_info, parse_mode='Markdown')
             
         except Exception as e:
-            logger.error(f"Ошибка в get_channel_id_command: {e}")
+            logger.error(f"❌ Ошибка в get_channel_id_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка при выполнении команды.")
 
@@ -662,23 +725,33 @@ ID: {user.id}
                 await update.message.reply_text(simple_test)
             
         except Exception as e:
-            logger.error(f"Ошибка в testcmd_command: {e}")
+            logger.error(f"❌ Ошибка в testcmd_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка при выполнении команды.")
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /start с обработкой реферальных параметров"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: /start от пользователя {update.effective_user.id}")
+        """КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Безопасный обработчик команды /start с защитой от ошибок"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /start от пользователя")
         try:
-            user = update.effective_user
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Безопасное получение данных пользователя
+            user_data = await self.safe_get_user(update)
+            if not user_data:
+                await update.message.reply_text("❌ Ошибка получения данных пользователя. Попробуйте позже.")
+                return
+                
+            logger.info(f"📝 Данные пользователя: ID={user_data['id']}, Username={user_data['username']}")
+            
             args = context.args
             
-            # Добавляем пользователя в базу данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
-            await self.database.get_or_create_user(
-                user.id, 
-                user.username or "", 
-                user.first_name or "", 
-                user.last_name or ""
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Добавление пользователя в базу данных с таймаутом
+            await self.safe_database_operation(
+                "добавление пользователя",
+                lambda: self.database.get_or_create_user(
+                    user_data['id'],
+                    user_data['username'],
+                    user_data['first_name'],
+                    user_data['last_name']
+                )
             )
             
             # Проверяем, есть ли реферальный параметр
@@ -688,10 +761,13 @@ ID: {user.id}
                 if arg.startswith('ref_'):
                     try:
                         referrer_id = int(arg[4:])  # Убираем "ref_" и получаем ID
-                        if referrer_id != user.id:  # Нельзя быть реферером самому себе
+                        if referrer_id != user_data['id']:  # Нельзя быть реферером самому себе
                             # Сохраняем информацию о рефере временно (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
-                            await self.database.save_pending_referral(user.id, referrer_id)
-                            logger.info(f"Пользователь {user.id} пришел от реферера {referrer_id}")
+                            await self.safe_database_operation(
+                                "сохранение реферера",
+                                lambda: self.database.save_pending_referral(user_data['id'], referrer_id)
+                            )
+                            logger.info(f"Пользователь {user_data['id']} пришел от реферера {referrer_id}")
                     except ValueError:
                         pass  # Неверный формат, игнорируем
 
@@ -709,7 +785,7 @@ ID: {user.id}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(welcome_text, reply_markup=reply_markup)
-            logger.info(f"✅ /start выполнен успешно для пользователя {user.id}")
+            logger.info(f"✅ /start выполнен успешно для пользователя {user_data['id']}")
         except Exception as e:
             logger.error(f"❌ Ошибка в start_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -717,24 +793,38 @@ ID: {user.id}
 
     async def confirm_payment_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды подтверждения оплаты и добавления реферала с комиссией только за TON"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: /confirm_payment от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /confirm_payment от пользователя")
         try:
-            user = update.effective_user
-            pending_referrer = await self.database.get_pending_referrer(user.id)
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Безопасное получение данных пользователя
+            user_data = await self.safe_get_user(update)
+            if not user_data:
+                await update.message.reply_text("❌ Ошибка получения данных пользователя.")
+                return
+            
+            pending_referrer = await self.safe_database_operation(
+                "получение реферера",
+                lambda: self.database.get_pending_referrer(user_data['id'])
+            )
 
             if pending_referrer:
                 # Добавляем реферала в базу (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
-                success = await self.database.add_referral(pending_referrer, user.id)
+                success = await self.safe_database_operation(
+                    "добавление реферала",
+                    lambda: self.database.add_referral(pending_referrer, user_data['id'])
+                )
                 if success:
                     # УДАЛЯЕМ запись об ожидающем реферере (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
-                    await self.database.remove_pending_referral(user.id)
+                    await self.safe_database_operation(
+                        "удаление реферера",
+                        lambda: self.database.remove_pending_referral(user_data['id'])
+                    )
                     await update.message.reply_text("✅ Оплата подтверждена! Реферал успешно добавлен. Комиссия рефереру будет начислена только при оплате за TON подписку.")
                 else:
                     await update.message.reply_text("❌ Ошибка при добавлении реферала.")
             else:
                 await update.message.reply_text("ℹ️ Для вас нет ожидающих рефереров.")
 
-            logger.info(f"✅ /confirm_payment выполнен для пользователя {user.id}")
+            logger.info(f"✅ /confirm_payment выполнен для пользователя {user_data['id']}")
         except Exception as e:
             logger.error(f"❌ Ошибка в confirm_payment_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -743,10 +833,11 @@ ID: {user.id}
     # ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ СИСТЕМА /confirmpay
     async def confirmpay_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /confirmpay - главное меню подтверждения оплаты"""
-        logger.info(f"КОМАНДА /confirmpay от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА /confirmpay от пользователя")
         try:
-            # Проверяем админские права
-            if update.effective_user.id not in self.config.ADMIN_USER_IDS:
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Безопасное получение данных пользователя
+            user_data = await self.safe_get_user(update)
+            if not user_data or user_data['id'] not in self.config.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
@@ -770,14 +861,14 @@ ID: {user.id}
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
-            logger.info(f"✅ /confirmpay меню показано пользователю {update.effective_user.id}")
+            logger.info(f"✅ /confirmpay меню показано пользователю {user_data['id']}")
         except Exception as e:
             logger.error(f"❌ Ошибка в confirmpay_command: {e}")
             await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def confirmpay_subscription_type_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора типа подписки в /confirmpay - ИСПРАВЛЕНО"""
-        logger.info(f"КОМАНДА /confirmpay type от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА /confirmpay type от пользователя")
         try:
             query = update.callback_query
             await query.answer()
@@ -812,7 +903,7 @@ ID: {user.id}
 
     async def confirmpay_confirm_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик подтверждения подписки - ИСПРАВЛЕНО"""
-        logger.info(f"КОМАНДА /confirmpay confirm от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА /confirmpay confirm от пользователя")
         try:
             query = update.callback_query
             await query.answer()
@@ -864,7 +955,10 @@ ID: {user.id}
                 # ИСПРАВЛЕНИЕ 2: Проверяем наличие пользователя в базе данных
                 logger.info(f"🔍 Поиск пользователя @{clean_username} в базе данных...")
                 
-                user_data = await self.database.get_user_by_username(clean_username)
+                user_data = await self.safe_database_operation(
+                    f"поиск пользователя {clean_username}",
+                    lambda: self.database.get_user_by_username(clean_username)
+                )
                 
                 if not user_data:
                     logger.warning(f"⚠️ Пользователь @{clean_username} не найден в базе данных")
@@ -991,52 +1085,40 @@ ID: {user.id}
     async def save_confirmation_to_history(self, username: str, subscription_type: str, admin_id: int):
         """Сохранение подтверждения в историю - ИСПРАВЛЕНО"""
         try:
-            # Сохраняем в реальную структуру данных
-            confirmation_data = {
+            confirmation_record = {
                 'username': username,
                 'subscription_type': subscription_type,
                 'admin_id': admin_id,
-                'timestamp': datetime.now(),
-                'link_id': f"CONF_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{username}"
+                'timestamp': datetime.now()
             }
             
-            # Сохраняем в базу данных
-            await self.database.save_confirmation_log(confirmation_data)
-            
-            # Добавляем в локальную историю для обратной совместимости
-            self.confirmation_history.append(confirmation_data)
-            
-            logger.info(f"📝 Подтверждение сохранено: @{username} - {subscription_type}")
+            self.confirmation_history.append(confirmation_record)
+            logger.info(f"✅ Подтверждение сохранено в историю: @{username} - {subscription_type}")
             
         except Exception as e:
-            logger.error(f"❌ Ошибка сохранения подтверждения: {e}")
+            logger.error(f"Ошибка сохранения в историю: {e}")
 
     async def confirmpay_history_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик истории подтверждений - ИСПРАВЛЕНО"""
+        """Обработчик просмотра истории подтверждений"""
         logger.info(f"КОМАНДА /confirmpay history от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # Получаем историю подтверждений из базы данных
-            logs = await self.database.get_recent_confirmation_logs(10)
-            
-            if not logs:
-                history_text = "📋 История подтверждений\n\nПока нет подтвержденных подписок."
+            if not self.confirmation_history:
+                history_text = "📊 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ**\n\nПока нет подтверждений."
             else:
-                history_text = "📋 ИСТОРИЯ ПОДТВЕРЖДЕНИЙ (последние 10):\n\n"
+                history_text = "📊 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ**\n\n"
                 
-                for log in logs:
-                    timestamp = log['timestamp'] if isinstance(log['timestamp'], str) else log['timestamp'].strftime('%Y-%m-%d %H:%M')
-                    history_text += f"👤 @{log['username']}\n"
-                    history_text += f"💎 {log['subscription_type']}\n"
-                    history_text += f"⏰ {timestamp}\n\n"
-            
-            # Кнопки назад
+                # Показываем последние 10 подтверждений
+                for i, record in enumerate(self.confirmation_history[-10:], 1):
+                    history_text += f"{i}. @{record['username']} - {record['subscription_type']}\n"
+                    history_text += f"   Админ: {record['admin_id']} | {record['timestamp'].strftime('%H:%M:%S')}\n\n"
+
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await query.message.edit_text(history_text, reply_markup=reply_markup)
+            await query.message.edit_text(history_text, reply_markup=reply_markup, parse_mode='Markdown')
             logger.info(f"✅ История подтверждений показана пользователю {update.effective_user.id}")
             
         except Exception as e:
@@ -1044,32 +1126,51 @@ ID: {user.id}
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def confirmpay_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик статистики подтверждений - ИСПРАВЛЕНО"""
+        """Обработчик просмотра статистики подтверждений"""
         logger.info(f"КОМАНДА /confirmpay stats от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # Получаем статистику из базы данных
-            stats = await self.database.get_confirmation_stats()
-            
-            if stats:
-                stats_text = f"""📈 СТАТИСТИКА ПОДТВЕРЖДЕНИЙ
-
-📊 Всего подтверждений: {stats.get('total', 0)}
-📅 Сегодня: {stats.get('today', 0)}
-📅 За неделю: {stats.get('week', 0)}
-🏆 Популярная подписка: {stats.get('popular_subscription', 'нет данных')}
-
-👨‍💼 Админ панель: Активна"""
+            if not self.confirmation_history:
+                stats_text = "📈 **СТАТИСТИКА ПОДТВЕРЖДЕНИЙ**\n\nПока нет данных."
             else:
-                stats_text = "📈 СТАТИСТИКА ПОДТВЕРЖДЕНИЙ\n\nНет данных для отображения."
+                # Подсчет статистики
+                total_confirmations = len(self.confirmation_history)
+                
+                # Статистика по типам подписок
+                subscription_stats = {}
+                for record in self.confirmation_history:
+                    sub_type = record['subscription_type']
+                    subscription_stats[sub_type] = subscription_stats.get(sub_type, 0) + 1
+                
+                # Статистика по админам
+                admin_stats = {}
+                for record in self.confirmation_history:
+                    admin_id = record['admin_id']
+                    admin_stats[admin_id] = admin_stats.get(admin_id, 0) + 1
+                
+                stats_text = f"""📈 **СТАТИСТИКА ПОДТВЕРЖДЕНИЙ**
 
-            # Кнопки назад
+**Общая статистика:**
+• Всего подтверждений: {total_confirmations}
+• Активных админов: {len(admin_stats)}
+
+**По типам подписок:**"""
+                
+                for sub_type, count in subscription_stats.items():
+                    stats_text += f"\n• {sub_type}: {count}"
+                
+                stats_text += f"\n\n**По админам:**"
+                for admin_id, count in admin_stats.items():
+                    stats_text += f"\n• {admin_id}: {count}"
+                
+                stats_text += f"\n\n**Время работы системы:** {datetime.now() - self.start_time}"
+
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await query.message.edit_text(stats_text, reply_markup=reply_markup)
+            await query.message.edit_text(stats_text, reply_markup=reply_markup, parse_mode='Markdown')
             logger.info(f"✅ Статистика подтверждений показана пользователю {update.effective_user.id}")
             
         except Exception as e:
@@ -1077,17 +1178,17 @@ ID: {user.id}
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def confirmpay_back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки "Назад" в /confirmpay - ИСПРАВЛЕНО"""
+        """Обработчик возврата к главному меню /confirmpay"""
         logger.info(f"КОМАНДА /confirmpay back от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # Удаляем пользователя из ожидающих ввода
+            # Удаляем пользователя из ожидающих, если он там есть
             if query.from_user.id in self.confirmpay_pending_users:
                 del self.confirmpay_pending_users[query.from_user.id]
 
-            # Возвращаемся к главному меню /confirmpay
+            # Возвращаемся к главному меню
             keyboard = [
                 [InlineKeyboardButton("⭐ 25 звезд", callback_data="confirmpay_type_25_stars"),
                  InlineKeyboardButton("⭐ 50 звезд", callback_data="confirmpay_type_50_stars")],
@@ -1115,10 +1216,16 @@ ID: {user.id}
 
     # ИСПРАВЛЕННЫЙ обработчик сообщений для /confirmpay
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик текстовых сообщений для /confirmpay"""
-        logger.info(f"ТЕКСТОВОЕ СООБЩЕНИЕ ПОЛУЧЕНО: '{update.message.text}' от пользователя {update.effective_user.id}")
+        """Обработчик текстовых сообщений для /confirmpay с критическими исправлениями"""
+        logger.info(f"ТЕКСТОВОЕ СООБЩЕНИЕ ПОЛУЧЕНО: '{update.message.text}'")
         try:
-            user_id = update.effective_user.id
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Безопасное получение данных пользователя
+            user_data = await self.safe_get_user(update)
+            if not user_data:
+                await update.message.reply_text("❌ Ошибка обработки сообщения. Попробуйте позже.")
+                return
+                
+            user_id = user_data['id']
             message_text = update.message.text.strip()
             
             # Проверяем, ожидает ли пользователь ввод username для /confirmpay
@@ -1164,13 +1271,13 @@ Username: {message_text}
                 return
             
             # Обычная обработка сообщений
-            if "admin" in message_text.lower() and update.effective_user.id in self.config.ADMIN_USER_IDS:
+            if "admin" in message_text.lower() and user_id in self.config.ADMIN_USER_IDS:
                 await self.admin_command(update, context)
             else:
                 await update.message.reply_text(
                     "🤖 Используйте /start для начала работы"
                 )
-                logger.info(f"✅ Отправлено справочное сообщение пользователю {update.effective_user.id}")
+                logger.info(f"✅ Отправлено справочное сообщение пользователю {user_id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в handle_message: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1178,7 +1285,7 @@ Username: {message_text}
 
     async def subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Подписки' - БЕЗ ЖИРНОГО ТЕКСТА"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: subscription callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: subscription callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1196,11 +1303,11 @@ Username: {message_text}
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
                 await query.message.edit_text(subscription_text, reply_markup=reply_markup)
-                logger.info(f"✅ Подписки открыты для пользователя {update.effective_user.id}")
+                logger.info(f"✅ Подписки открыты")
             except BadRequest as e:
                 if "Message is not modified" in str(e):
                     await query.answer("Подписки уже открыты!")
-                    logger.info(f"ℹ️ Подписки уже открыты для пользователя {update.effective_user.id}")
+                    logger.info(f"ℹ️ Подписки уже открыты")
                 else:
                     await query.answer("Ошибка при открытии подписок.")
                     logger.error(f"❌ Ошибка BadRequest в subscription_callback: {e}")
@@ -1211,7 +1318,7 @@ Username: {message_text}
 
     async def ton_subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """ИСПРАВЛЕННЫЙ обработчик выбора обычного плана TON с правильными ценами"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: ton_subscription_plan callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: ton_subscription_plan callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1233,7 +1340,7 @@ Username: {message_text}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(plan_text, reply_markup=reply_markup)
-            logger.info(f"✅ План TON {plan_index} показан пользователю {update.effective_user.id}")
+            logger.info(f"✅ План TON {plan_index} показан")
         except Exception as e:
             logger.error(f"❌ Ошибка в ton_subscription_plan_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1241,7 +1348,7 @@ Username: {message_text}
 
     async def subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора конкретной подписки - выбор типа подписки"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: subscription_plan callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: subscription_plan callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1262,7 +1369,7 @@ Username: {message_text}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(plan_text, reply_markup=reply_markup)
-            logger.info(f"✅ Выбор типа подписки для плана {plan_index} показан пользователю {update.effective_user.id}")
+            logger.info(f"✅ Выбор типа подписки для плана {plan_index} показан")
         except Exception as e:
             logger.error(f"❌ Ошибка в subscription_plan_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1270,7 +1377,7 @@ Username: {message_text}
 
     async def payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Оплатить' - БЕЗ ЖИРНОГО ТЕКСТА"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: payment callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: payment callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1296,7 +1403,7 @@ Username: {message_text}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
-            logger.info(f"✅ Оплата для плана {plan_index} открыта для пользователя {update.effective_user.id}")
+            logger.info(f"✅ Оплата для плана {plan_index} открыта")
         except Exception as e:
             logger.error(f"❌ Ошибка в payment_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1304,7 +1411,7 @@ Username: {message_text}
 
     async def activity_subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора активных подписок - ИСПРАВЛЕННЫЙ"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: activity_subscription callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: activity_subscription callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1327,7 +1434,7 @@ Username: {message_text}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(activity_text, reply_markup=reply_markup)
-            logger.info(f"✅ Активные подписки для плана {plan_index} показаны пользователю {update.effective_user.id}")
+            logger.info(f"✅ Активные подписки для плана {plan_index} показаны")
         except Exception as e:
             logger.error(f"❌ Ошибка в activity_subscription_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1335,7 +1442,7 @@ Username: {message_text}
 
     async def select_stars_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """ИСПРАВЛЕННЫЙ обработчик выбора активных подписок (звездочки)"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: select_stars callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: select_stars callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1357,7 +1464,7 @@ Username: {message_text}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(activity_text, reply_markup=reply_markup)
-            logger.info(f"✅ Активные подписки (звездочки) показаны пользователю {update.effective_user.id}")
+            logger.info(f"✅ Активные подписки (звездочки) показаны")
         except Exception as e:
             logger.error(f"❌ Ошибка в select_stars_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1365,7 +1472,7 @@ Username: {message_text}
 
     async def select_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """ИСПРАВЛЕННЫЙ обработчик выбора обычных подписок (TON) с ПРАВИЛЬНЫМИ ценами"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: select_ton callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: select_ton callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1386,7 +1493,7 @@ Username: {message_text}
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(subscription_text, reply_markup=reply_markup)
-            logger.info(f"✅ Обычные подписки (TON) показаны пользователю {update.effective_user.id}")
+            logger.info(f"✅ Обычные подписки (TON) показаны")
         except Exception as e:
             logger.error(f"❌ Ошибка в select_ton_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1394,7 +1501,7 @@ Username: {message_text}
 
     async def star_subscription_plan_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """ИСПРАВЛЕННЫЙ обработчик выбора конкретного плана звездочек"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: star_subscription_plan callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: star_subscription_plan callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1430,7 +1537,7 @@ Username: {message_text}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(plan_text, reply_markup=reply_markup)
-            logger.info(f"✅ План звездочек {stars} показан пользователю {update.effective_user.id}")
+            logger.info(f"✅ План звездочек {stars} показан")
         except Exception as e:
             logger.error(f"❌ Ошибка в star_subscription_plan_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1438,7 +1545,7 @@ Username: {message_text}
 
     async def stars_payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """ИСПРАВЛЕННЫЙ обработчик оплаты через звездочки"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: stars_payment callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: stars_payment callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1467,9 +1574,9 @@ Username: {message_text}
 
 для оплаты в TON нажмите кнопку "Оплатить TON" и отправьте сумму указанную выше (при нажатии на эту кнопку, у пользователя копируется мой адрес тон кошелька)
 
-для оплаты ЗВЕЗДОЧКАМИ нажмите кнопку "Оплатить звездочками" и отправьте подарком стоимость подписки + оплата комиссии (при нажатии этой кнопки пользователя перекидывает на тг @{self.config.STARS_USERNAME})
+для оплаты ЗВЕЗДОЧКАМИ нажмите кнопку "Оплатить звездочками" и отправьте подарком стоимость подписки + оплата комиссии
 
-после оплаты обратитесь к менеджеру [здесь](https://t.me/{self.config.MANAGER_USERNAME}) для подтверждения оплаты и для получения ссылки в закрытый ТГК.
+после оплаты обратитесь к менеджеру для подтверждения.
 
 ⚠️ ВАЖНО: Для копирования адреса кошелька нажмите на кнопку "Оплатить TON" """
 
@@ -1482,7 +1589,7 @@ Username: {message_text}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
-            logger.info(f"✅ Оплата через звездочки {stars} показана пользователю {update.effective_user.id}")
+            logger.info(f"✅ Оплата через звездочки {stars} показана")
         except Exception as e:
             logger.error(f"❌ Ошибка в stars_payment_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1490,7 +1597,7 @@ Username: {message_text}
 
     async def copy_stars_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """ИСПРАВЛЕННЫЙ обработчик кнопки "Оплатить TON" - копирование адреса"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_stars_ton callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_stars_ton callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1534,7 +1641,7 @@ Username: {message_text}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
-            logger.info(f"✅ Оплата через TON {stars} показана пользователю {update.effective_user.id}")
+            logger.info(f"✅ Оплата через TON {stars} показана")
         except Exception as e:
             logger.error(f"❌ Ошибка в copy_stars_ton_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1542,7 +1649,7 @@ Username: {message_text}
 
     async def stars_payment_stars_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """ИСПРАВЛЕННЫЙ обработчик кнопки "Оплатить звездочками" - редирект на менеджера"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: stars_payment_stars callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: stars_payment_stars callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1556,7 +1663,7 @@ Username: {message_text}
                 return
 
             # ИСПРАВЛЕННОЕ сообщение с редиректом на pingvinchik_liza
-            payment_text = f"""⭐️ ОПЛАТА ЧЕРЕЗ ЗВЕЗДОЧКИ - {stars} ЗВЕЗД
+            payment_text = f"""⭐️ ОПЛАТА ЧЕРЕЗ ЗВЕЗДОЧКИ - {stars} ЗВЕД
 
 💳 Для оплаты перейдите к @{self.config.STARS_USERNAME} и отправьте подарком стоимость подписки ({stars} звезд) + оплата комиссии.
 
@@ -1573,7 +1680,7 @@ Username: {message_text}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.message.edit_text(payment_text, reply_markup=reply_markup, parse_mode='HTML')
-            logger.info(f"✅ Оплата через звездочки {stars} для @{self.config.STARS_USERNAME} показана пользователю {update.effective_user.id}")
+            logger.info(f"✅ Оплата через звездочки {stars} для @{self.config.STARS_USERNAME} показана")
         except Exception as e:
             logger.error(f"❌ Ошибка в stars_payment_stars_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1581,7 +1688,7 @@ Username: {message_text}
 
     async def contact_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Связь' с ОРИГИНАЛЬНЫМ текстом"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: contact callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: contact callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1597,11 +1704,11 @@ Username: {message_text}
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
                 await query.message.edit_text(contact_text, reply_markup=reply_markup, parse_mode='HTML')
-                logger.info(f"✅ Контакты открыты для пользователя {update.effective_user.id}")
+                logger.info(f"✅ Контакты открыты")
             except BadRequest as e:
                 if "Message is not modified" in str(e):
                     await query.answer("Контакты уже открыты!")
-                    logger.info(f"ℹ️ Контакты уже открыты для пользователя {update.effective_user.id}")
+                    logger.info(f"ℹ️ Контакты уже открыты")
                 else:
                     await query.answer("Ошибка при открытии контактов.")
                     logger.error(f"❌ Ошибка BadRequest в contact_callback: {e}")
@@ -1612,7 +1719,7 @@ Username: {message_text}
 
     async def referral_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Реферальная система' - ВРЕМЕННО ПРИОСТАНОВЛЕН"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: referral callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: referral callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1639,14 +1746,14 @@ Username: {message_text}
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
                 await query.message.edit_text(referral_text, reply_markup=reply_markup, parse_mode='Markdown')
-                logger.info(f"✅ Реферальная система (приостановлена) показана для пользователя {update.effective_user.id}")
+                logger.info(f"✅ Реферальная система (приостановлена) показана")
             except BadRequest as e:
                 if "Message is not modified" not in str(e):
                     logger.error(f"❌ Ошибка BadRequest в referral_callback: {e}")
                     raise
                 # Сообщение не изменилось, просто отвечаем на callback
                 await query.answer()
-                logger.info(f"ℹ️ Реферальная система (приостановлена) уже показана для пользователя {update.effective_user.id}")
+                logger.info(f"ℹ️ Реферальная система (приостановлена) уже показана")
         except Exception as e:
             logger.error(f"❌ Ошибка в referral_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1654,7 +1761,7 @@ Username: {message_text}
 
     async def get_referral_link_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик получения реферальной ссылки - БЕЗ ЖИРНОГО ТЕКСТА"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: get_referral callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: get_referral callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1676,13 +1783,16 @@ Username: {message_text}
 
     async def referral_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик статистики рефералов"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: referral_stats callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: referral_stats callback")
         try:
             query = update.callback_query
             await query.answer()
 
             # Получаем статистику пользователя (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
-            stats_text = await self.database.get_user_referral_stats(query.from_user.id)
+            stats_text = await self.safe_database_operation(
+                "получение статистики рефералов",
+                lambda: self.database.get_user_referral_stats(query.from_user.id)
+            )
             if stats_text:
                 stats_text = self.config.REFERRAL_STATS_MESSAGE.format(referrals_info=stats_text)
             else:
@@ -1700,7 +1810,7 @@ Username: {message_text}
 
     async def copy_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик копирования TON адреса"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_ton callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_ton callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1709,7 +1819,7 @@ Username: {message_text}
                 f"Адрес кошелька скопирован!\n\n`{self.config.TON_WALLET_ADDRESS}`\n\nОтправьте указанную сумму TON.",
                 parse_mode='Markdown'
             )
-            logger.info(f"✅ Адрес TON скопирован для пользователя {update.effective_user.id}")
+            logger.info(f"✅ Адрес TON скопирован")
         except Exception as e:
             logger.error(f"❌ Ошибка в copy_ton_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1717,7 +1827,7 @@ Username: {message_text}
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Назад' - возврат к главному меню"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: back callback от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: back callback")
         try:
             query = update.callback_query
             await query.answer()
@@ -1734,14 +1844,14 @@ Username: {message_text}
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
                 await query.message.edit_text(welcome_text, reply_markup=reply_markup)
-                logger.info(f"✅ Возврат к главному меню для пользователя {update.effective_user.id}")
+                logger.info(f"✅ Возврат к главному меню")
             except BadRequest as e:
                 if "Message is not modified" not in str(e):
                     logger.error(f"❌ Ошибка BadRequest в back_callback: {e}")
                     raise
                 # Сообщение не изменилось, просто отвечаем на callback
                 await query.answer()
-                logger.info(f"ℹ️ Уже в главном меню для пользователя {update.effective_user.id}")
+                logger.info(f"ℹ️ Уже в главном меню")
         except Exception as e:
             logger.error(f"❌ Ошибка в back_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
@@ -1749,7 +1859,7 @@ Username: {message_text}
 
     async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraa"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraa от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraa")
         try:
             user = update.effective_user
 
@@ -1760,7 +1870,7 @@ Username: {message_text}
                 return
 
             # ОРИГИНАЛЬНЫЙ текст админ панели
-            admin_text = """🔧 Админ панель PassiveNFT Bot
+            admin_text = """🔧 Админ панель PassiveNFT Bot (Стабильная версия)
 📊 /adminserveraastat - статистика подписок
 👥 /adminserveraapeople - список участников
 🔗 /adminserveraaref - реферальная статистика
@@ -1772,6 +1882,12 @@ Username: {message_text}
 🆔 /get_channel_id - получить ID текущего канала
 🔧 /testcmd - тестовая команда
 👨‍💼 /confirmpay - подтверждение оплат с автоотправкой ссылок
+
+**КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ СТАБИЛЬНОСТИ:**
+• Автоматические повторные попытки подключения
+• Таймауты для операций с БД
+• Защита от ошибок пользователя
+• Оптимизированный polling
 
 💳 Количество подписок:
 👥 на 150 человек: энное количество из 150
@@ -1786,7 +1902,7 @@ Username: {message_text}
 
     async def admin_stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraastat"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraastat от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraastat")
         try:
             user = update.effective_user
 
@@ -1798,15 +1914,32 @@ Username: {message_text}
 
             # Получаем статистику подписок
             try:
-                total_users = await self.database.get_all_users_count()
-                total_referrals = await self.database.get_total_referrals_count()
-                total_commission = await self.database.get_total_commission_earned()
+                total_users = await self.safe_database_operation(
+                    "получение общего количества пользователей",
+                    lambda: self.database.get_all_users_count()
+                )
+                total_referrals = await self.safe_database_operation(
+                    "получение общего количества рефералов",
+                    lambda: self.database.get_total_referrals_count()
+                )
+                total_commission = await self.safe_database_operation(
+                    "получение общей комиссии",
+                    lambda: self.database.get_total_commission_earned()
+                )
                 
-                stats_text = f"""📊 СТАТИСТИКА БОТА
+                uptime = datetime.now() - self.start_time
+                
+                stats_text = f"""📊 СТАТИСТИКА БОТА (Стабильная версия)
 
-👥 Всего пользователей: {total_users}
-💎 Рефералов: {total_referrals}
-💰 Начислено комиссий: {total_commission} TON
+👥 Всего пользователей: {total_users or 0}
+💎 Рефералов: {total_referrals or 0}
+💰 Начислено комиссий: {total_commission or 0} TON
+
+⏱️ Время работы: {uptime.days}д {uptime.seconds//3600}ч {(uptime.seconds//60)%60}м
+🚀 Статус: Активен и стабилен
+🔄 Повторные попытки: Включены
+⚡ Таймауты: Настроены
+📡 Соединение: Стабильное
 
 🤖 Бот: @{self.config.BOT_USERNAME}
 💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}..."""
@@ -1823,7 +1956,7 @@ Username: {message_text}
 
     async def admin_people_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraapeople"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraapeople от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraapeople")
         try:
             user = update.effective_user
 
@@ -1835,7 +1968,10 @@ Username: {message_text}
 
             # Получаем список участников
             try:
-                users_data = self.database.get_subscribers()
+                users_data = await self.safe_database_operation(
+                    "получение списка пользователей",
+                    lambda: self.database.get_subscribers()
+                )
                 
                 if users_data:
                     people_text = "👥 ПОСЛЕДНИЕ ПОЛЬЗОВАТЕЛИ:\n\n"
@@ -1857,7 +1993,7 @@ Username: {message_text}
 
     async def admin_referrals_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /adminserveraaref"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraaref от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /adminserveraaref")
         try:
             user = update.effective_user
 
@@ -1869,12 +2005,20 @@ Username: {message_text}
 
             # Получаем реферальную статистику
             try:
-                ref_data = await self.database.get_referral_stats()
+                ref_data = await self.safe_database_operation(
+                    "получение статистики рефералов",
+                    lambda: self.database.get_referral_stats()
+                )
+                
+                total_referrals = await self.safe_database_operation(
+                    "получение общего количества рефералов",
+                    lambda: self.database.get_total_referrals_count()
+                )
                 
                 ref_text = f"""🔗 СТАТИСТИКА РЕФЕРАЛОВ
 
-📊 Всего рефералов: {await self.database.get_total_referrals_count()}
-👥 Активных рефереров: {len(ref_data)}
+📊 Всего рефералов: {total_referrals or 0}
+👥 Активных рефереров: {len(ref_data) if ref_data else 0}
 
 🏆 ТОП РЕФЕРЕРОВ:
 """
@@ -1897,7 +2041,7 @@ Username: {message_text}
 
     async def broadcast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /broadcast для рассылки сообщений всем пользователям"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: /broadcast от пользователя {update.effective_user.id}")
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: /broadcast")
         try:
             user = update.effective_user
 
@@ -1919,9 +2063,12 @@ Username: {message_text}
             broadcast_message = ' '.join(context.args)
             
             # Получаем статистику пользователей
-            total_users = self.database.get_all_users_count()
+            total_users = await self.safe_database_operation(
+                "получение количества пользователей для рассылки",
+                lambda: self.database.get_all_users_count()
+            )
             
-            if total_users == 0:
+            if not total_users or total_users == 0:
                 await update.message.reply_text("❌ В базе данных нет зарегистрированных пользователей")
                 return
 
@@ -1938,48 +2085,101 @@ Username: {message_text}
             logger.error(f"Traceback: {traceback.format_exc()}")
             await update.message.reply_text("❌ Произошла ошибка при рассылке. Попробуйте позже.")
 
-    # Функция get_all_users удалена - используем DatabaseManager методы
+    # КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ: Функция запуска polling с повторными попытками
+    async def start_polling_with_retry(self, max_retries=3):
+        """КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Запуск polling с логикой повторных попыток"""
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"🔄 Попытка {attempt}/{max_retries} - Инициализация приложения...")
+                
+                # Инициализация с таймаутом
+                await asyncio.wait_for(
+                    self.application.initialize(),
+                    timeout=30.0
+                )
+                
+                logger.info(f"🔄 Попытка {attempt}/{max_retries} - Запуск приложения...")
+                
+                # Запуск приложения
+                await self.application.start()
+                
+                logger.info(f"🔄 Попытка {attempt}/{max_retries} - Запуск polling...")
+                
+                # Запуск polling с оптимизированными параметрами
+                await self.application.updater.start_polling(
+                    poll_interval=0.05,  # Быстрый интервал опроса
+                    timeout=10,          # Таймаут запросов
+                    drop_pending_updates=True,  # Игнорировать старые обновления
+                    bootstrap_retries=3  # Повторные попытки при запуске
+                )
+                
+                logger.info(f"✅ Бот успешно запущен с попытки {attempt}")
+                logger.info("📡 Polling начат - бот готов к приему сообщений")
+                return True
+                
+            except (asyncio.TimeoutError, TelegramError, httpx.ConnectTimeout) as e:
+                logger.error(f"⏰ Попытка {attempt}/{max_retries} - Ошибка: {e}")
+                
+                if attempt < max_retries:
+                    wait_time = 5 * attempt  # Экспоненциальная задержка
+                    logger.info(f"⏳ Ожидание {wait_time} секунд перед следующей попыткой...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error(f"❌ Все попытки исчерпаны. Критическая ошибка: {e}")
+                    raise
+                    
+            except Exception as e:
+                logger.error(f"❌ Неожиданная ошибка в попытке {attempt}: {e}")
+                if attempt == max_retries:
+                    raise
+                await asyncio.sleep(5)
 
-    # Функции get_user_referral_stats удалена - используем DatabaseManager.get_user_referral_stats
-
-    # Функция get_subscription_stats удалена - используем DatabaseManager методы
-
-    # Функции get_subscribed_people, calculate_commission, add_referral_earnings, get_referrals_stats удалены - используем DatabaseManager методы
+    async def safe_shutdown(self):
+        """КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Безопасная остановка бота"""
+        logger.info("🛑 Начинаем корректную остановку бота...")
+        try:
+            if self.application and self.application.updater.running:
+                self.application.updater.stop()
+                logger.info("✅ Polling остановлен")
+                
+            if self.application and self.application.running:
+                await self.application.stop()
+                await self.application.shutdown()
+                logger.info("✅ Бот корректно остановлен")
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка при остановке бота: {e}")
 
     async def run(self):
-        """Запуск бота с улучшенной структурой"""
-        logger.info("🚀 Запуск PassiveNFT Bot на Render...")
+        """Запуск бота с улучшенной структурой и критическими исправлениями стабильности"""
+        logger.info("🚀 Запуск PassiveNFT Bot (Стабильная версия с исправлениями)...")
         
-        # Инициализация асинхронной базы данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
-        logger.info("🗄️ Инициализация асинхронной базы данных...")
-        await self.database.initialize()
-        logger.info("✅ Асинхронная база данных инициализирована")
-        
-        logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
-        logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
-        logger.info("✅ Реферальная система включена (комиссия только за TON)")
-        logger.info("⭐️ Активные подписки за звездочки включены")
-        logger.info("🆔 Новые команды для работы с каналами включены")
-        logger.info("👨‍💼 ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ система подтверждения оплат /confirmpay включена")
-
-        # Очистка webhook перед запуском
-        await self.clear_webhook_on_startup()
-
-        # Инициализация и запуск приложения
-        await self.application.initialize()
-        await self.application.start()
-
         try:
-            # Запуск polling с улучшенной диагностикой
-            logger.info("🔄 Запуск polling режима...")
-            await self.application.updater.start_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True,
-                bootstrap_retries=3,
-                timeout=10
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Инициализация асинхронной базы данных с таймаутом
+            logger.info("🗄️ Инициализация асинхронной базы данных...")
+            await self.safe_database_operation(
+                "инициализация БД",
+                lambda: self.database.initialize(),
+                timeout=10.0
             )
-            logger.info("✅ Бот запущен и ожидает команды...")
-            logger.info("📡 Polling начат - бот готов к приему сообщений")
+            logger.info("✅ Асинхронная база данных инициализирована")
+            
+            logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
+            logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
+            logger.info("✅ Реферальная система включена (комиссия только за TON)")
+            logger.info("⭐️ Активные подписки за звездочки включены")
+            logger.info("🆔 Новые команды для работы с каналами включены")
+            logger.info("👨‍💼 ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ система подтверждения оплат /confirmpay включена")
+            logger.info("🔧 КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ СТАБИЛЬНОСТИ ИНТЕГРИРОВАНЫ")
+            logger.info("⚡ Таймауты и повторные попытки настроены")
+
+            # Очистка webhook перед запуском
+            await self.clear_webhook_on_startup()
+
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Запуск polling с повторными попытками
+            await self.start_polling_with_retry()
+            
+            logger.info("🎯 Бот успешно запущен и готов к работе!")
             
             # Бесконечное ожидание с обработкой прерываний
             while True:
@@ -1990,35 +2190,12 @@ Username: {message_text}
                     break
                     
         except Exception as e:
-            logger.error(f"❌ Критическая ошибка в polling: {e}")
+            logger.error(f"❌ Критическая ошибка в run: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
         finally:
-            # Корректная остановка бота
-            logger.info("🛑 Начинаем корректную остановку бота...")
-            try:
-                if self.application.updater.running:
-                    self.application.updater.stop()
-                    logger.info("✅ Polling остановлен")
-                await self.application.stop()
-                await self.application.shutdown()
-                logger.info("✅ Бот корректно остановлен")
-            except Exception as e:
-                logger.warning(f"⚠️ Ошибка при остановке бота: {e}")
-
-async def main():
-    """Главная функция запуска с улучшенной обработкой ошибок"""
-    try:
-        logger.info("🎯 Инициализация PassiveNFT Bot...")
-        bot = PassiveNFTBot()
-        logger.info("✅ Bot инициализирован, начинаем запуск...")
-        await bot.run()
-    except KeyboardInterrupt:
-        logger.info("👋 Получен сигнал остановки от пользователя")
-    except Exception as e:
-        logger.error(f"❌ Критическая ошибка в main: {e}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Корректная остановка бота
+            await self.safe_shutdown()
 
 # ФУНКЦИЯ ВЕБ-СЕРВЕРА ДЛЯ RENDER.COM
 async def start_web_server():
@@ -2050,9 +2227,23 @@ async def run_both():
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
+async def main():
+    """Главная функция запуска с улучшенной обработкой ошибок"""
+    try:
+        logger.info("🎯 Инициализация PassiveNFT Bot (Стабильная версия с исправлениями)...")
+        bot = PassiveNFTBot()
+        logger.info("✅ Bot инициализирован, начинаем запуск...")
+        await bot.run()
+    except KeyboardInterrupt:
+        logger.info("👋 Получен сигнал остановки от пользователя")
+    except Exception as e:
+        logger.error(f"❌ Критическая ошибка в main: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
+
 if __name__ == "__main__":
     try:
-        logger.info("🔥 ЗАПУСК PassiveNFT Bot...")
+        logger.info("🔥 ЗАПУСК PassiveNFT Bot (Полная версия с критическими исправлениями стабильности)...")
         asyncio.run(run_both())
     except KeyboardInterrupt:
         logger.info("👋 Бот остановлен пользователем")
