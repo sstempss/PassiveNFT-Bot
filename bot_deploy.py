@@ -42,10 +42,10 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from telegram.error import BadRequest, TelegramError
 import httpx
 
-# ИМПОРТЫ ДЛЯ ВЕБ-СЕРВЕРА (для решения проблемы с портом на Render.com)
+# ИМПОРТЫ ВЕБ-СЕРВЕРА УДАЛЕНЫ - техническое исправление для чистого polling
 import os
-import aiohttp
-from aiohttp import web
+# import aiohttp - УДАЛЕН для чистого polling
+# from aiohttp import web - УДАЛЕН для чистого polling
 
 # Импортируем нашу асинхронную базу данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
 from database_async import AsyncDatabaseManager
@@ -2207,25 +2207,12 @@ async def start_web_server():
     app.router.add_get('/', health_check)
     app.router.add_get('/health', health_check)
     
-    port = int(os.environ.get('PORT', 10000))
+    # PORT переменная удалена - техническое исправление
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     print(f"🚀 Web server started on port {port}")
-
-async def run_both():
-    """Запускает бота и веб-сервер одновременно с улучшенной обработкой ошибок"""
-    bot_instance = PassiveNFTBot()
-    try:
-        await asyncio.gather(
-            bot_instance.run(),  # Бот
-            start_web_server()   # Веб-сервер
-        )
-    except Exception as e:
-        logger.error(f"❌ Ошибка в run_both: {e}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise
 
 async def main():
     """Главная функция запуска с улучшенной обработкой ошибок"""
@@ -2244,7 +2231,13 @@ async def main():
 if __name__ == "__main__":
     try:
         logger.info("🔥 ЗАПУСК PassiveNFT Bot (Полная версия с критическими исправлениями стабильности)...")
-        asyncio.run(run_both())
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("👋 Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        sys.exit(1)
     except KeyboardInterrupt:
         logger.info("👋 Бот остановлен пользователем")
     except Exception as e:
