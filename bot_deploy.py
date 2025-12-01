@@ -2,13 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 PassiveNFT Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ С ПОЛНОЙ РЕФЕРАЛЬНОЙ СИСТЕМОЙ
-[FIRE] Все критические ошибки исправлены + РЕФЕРАЛЬНАЯ СИСТЕМА:
+🔥 Все критические ошибки исправлены + РЕФЕРАЛЬНАЯ СИСТЕМА:
 ✅ Chat not found - исправлено 
 ✅ NoneType errors - исправлено
 ✅ Username обработка - улучшена
 ✅ Реальные invite ссылки - работают
-✅ Markdown экранирование - исправлено
-✅ Async database context managers - исправлено
 💰 РЕФЕРАЛЬНАЯ СИСТЕМА:
 ✅ Автоматический расчет 10% комиссии для TON-подписок
 ✅ Интеграция с системой подтверждения оплаты
@@ -53,56 +51,49 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ===== ЭКРАНИРОВАНИЕ MARKDOWN (ДЛЯ ИСПРАВЛЕНИЯ ОШИБОК TELEGRAM) =====
-def escape_markdown(text: str) -> str:
-    """
-    Экранирование специальных символов Markdown для безопасной отправки сообщений
-    Исправляет ошибки: "can't find end of the entity starting at byte offset 45"
-    """
-    special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    for char in special_chars:
-        text = text.replace(char, f'\\{char}')
-    return text
+# Класс для работы с aiohttp вместо httpx (решает проблемы с TLS)
+class AioHTTPRequest:
+    def __init__(self, api_url, session_kwargs=None):
+        self._api_url = api_url
+        self._session = None
+        
+    async def initialize(self):
+        """Инициализация клиентской сессии""" 
+        if self._session is None:
+            self._session = aiohttp.ClientSession()
+        
+    async def shutdown(self):
+        """Закрытие клиентской сессии""" 
+        if self._session:
+            await self._session.close()
+            self._session = None
+            
+    async def do_request(self, method, url=None, data=None, **kwargs):
+        """Выполнение HTTP запроса""" 
+        if not self._session:
+            await self.initialize()
+            
+        # Построение URL
+        if url:
+            api_url = f"{self._api_url}/{method}?url={url}"
+        else:
+            api_url = f"{self._api_url}/{method}"
+            
+        # Выполнение POST запроса
+        async with self._session.post(api_url, json=data, **kwargs) as response:
+            response_text = await response.text()
+            try:
+                result = json.loads(response_text)
+                return response.status, result
+            except json.JSONDecodeError:
+                return response.status, {"error": "Invalid JSON response"}
 
-# ===== КОНВЕРТЕР ЭМОДЗИ (для совместимости со старыми версиями Python) =====
-def convert_emoji_codes(text: str) -> str:
-    """
-    Конвертирует кодовые названия эмодзи обратно в символы
-    Используется для обеспечения совместимости с старыми версиями Python
-    """
-    emoji_mapping = {
-        '[CHART]': '📊',
-        '[MONEY]': '💰', 
-        '[PEOPLE]': '👥',
-        '[LINK]': '🔗',
-        '[TROPHY]': '🏆',
-        '[X]': '❌',
-        '[CHECK]': '✅',
-        '[STAR]': '⭐',
-        '[FIRE]': '🔥',
-        '[TARGET]': '🎯',
-        '[ROCKET]': '🚀',
-        '[LIGHTNING]': '⚡',
-        '[DIAMOND]': '💎',
-        '[PARTY]': '🎉',
-        '[WARNING]': '⚠️',
-        '[LOCK]': '🔒',
-        '[GAME]': '🎮',
-        '[MOBILE]': '📱',
-        '[LAPTOP]': '💻',
-        '[UP]': '📈',
-        '[DOWN]': '📉',
-        '[GIFT]': '🎁',
-        '[BELL]': '🔔',
-        '[BULB]': '💡',
-        '[SPEECH]': '💬',
-        '[CLIPBOARD]': '📋'
-    }
-    
-    for code, emoji in emoji_mapping.items():
-        text = text.replace(code, emoji)
-    
-    return text
+
+
+                return response.status, result
+            except json.JSONDecodeError:
+                return response.status, {"error": "Invalid JSON response"}
+
 
 class PassiveNFTBot:
     def __init__(self):
@@ -126,12 +117,11 @@ class PassiveNFTBot:
         # ИСПРАВЛЕНО: subscription_links как PRIVATE_CHANNEL_LINKS
         self.subscription_links = self.config.PRIVATE_CHANNEL_LINKS
         
-        logger.info("[FIRE] ЗАПУСК PassiveNFT Bot - ПОЛНАЯ ИНТЕГРАЦИЯ РЕФЕРАЛЬНОЙ СИСТЕМЫ...")
+        logger.info("🔥 ЗАПУСК PassiveNFT Bot - ПОЛНАЯ ИНТЕГРАЦИЯ РЕФЕРАЛЬНОЙ СИСТЕМЫ...")
         logger.info(f"🆔 Реферальная система с автоматическим расчетом комиссий активирована")
         logger.info(f"💰 Комиссия 10% начисляется только за TON-подписки")
         logger.info(f"🔗 PRIVATE_CHANNEL_LINKS интегрированы")
         logger.info(f"🔄 Система реальных invite ссылок активирована")
-        logger.info(f"🛡️ Markdown экранирование активно (исправлены ошибки Telegram)")
         
         # Консольный вывод конфигурации
         self.log_config()
@@ -155,11 +145,11 @@ class PassiveNFTBot:
     def log_config(self):
         """Логирование конфигурации для отладки"""
         try:
-            logger.info("[STAR] Звезды каналы:")
+            logger.info("⭐ Звезды каналы:")
             for amount, channel_id in self.config.CHANNEL_MAPPINGS.items():
                 logger.info(f"    {amount} звезд → {channel_id}")
             
-            logger.info("* TON подписки:")
+            logger.info("💎 TON подписки:")
             for amount, channel_id in self.config.TON_CHANNEL_MAPPINGS.items():
                 logger.info(f"    {amount} TON → {channel_id}")
             
@@ -188,6 +178,7 @@ class PassiveNFTBot:
         # Основные команды
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
+        self.application.add_handler(CommandHandler("rus", self.rus_command))
         
         # Админ команды
         self.application.add_handler(CommandHandler("adminserveraa", self.admin_command))
@@ -244,10 +235,16 @@ class PassiveNFTBot:
         self.application.add_handler(CallbackQueryHandler(self.copy_ton_callback, pattern="^copy_ton$"))
         self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
         
+        # Обработчик для статистики в команде /rus
+        self.application.add_handler(CallbackQueryHandler(self.rus_stats_callback, pattern="^rus_stats$"))
+        
+        # Обработчик для кнопки "Назад к подпискам" в /rus
+        self.application.add_handler(CallbackQueryHandler(self.rus_back_callback, pattern="^rus_back$"))
+        
         # Обработчик всех текстовых сообщений
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
         
-        logger.info("✅ Все обработчики команд зарегистрированы с реферальной системой")
+        logger.info("✅ Все обработчики команд зарегистрированы с реферальной системой включая /rus")
     
     # ===== ОСНОВНЫЕ КОМАНДЫ =====
     
@@ -274,15 +271,13 @@ class PassiveNFTBot:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # ИСПРАВЛЕНО: Экранирование Markdown для безопасной отправки
-            safe_text = escape_markdown(welcome_text)
-            await update.message.reply_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode='Markdown')
             logger.info(f"✅ /start выполнен успешно для пользователя {update.effective_user.id}")
             
         except Exception as e:
-            logger.error(f"[X] Ошибка в /start: {e}")
+            logger.error(f"❌ Ошибка в /start: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Команда помощи /help"""
@@ -296,25 +291,63 @@ class PassiveNFTBot:
 ⚡ **Быстрые действия:**
 • 💳 Подписки - Выбрать тип подписки
 • 💬 Связь - Связаться с менеджером  
-• 👥 Реферальная система - Информация о доработке
+• 👥 Рефералы - Ваша реферальная система
 
 📞 **Поддержка:** @{self.config.MANAGER_USERNAME}
 
-🚧 **Реферальная система:**
-• Статус: Временно недоступна
-• В стадии доработки
-• Скоро будет запущена автоматическая система комиссий
-• Обязательно уведомим всех о запуске!
-
-* **Доступные функции:**
-• Подписки за звезды и TON
-• Мгновенное получение доступа
-• Поддержка менеджеров 24/7
-• Автоматическая обработка платежей
+💰 **Реферальная система:**
+• Зарабатывайте 10% с TON-подписок ваших рефералов
+• Приглашайте друзей и получайте пассивный доход!
 """
-        # ИСПРАВЛЕНО: Экранирование Markdown
-        safe_text = escape_markdown(help_text)
-        await update.message.reply_text(safe_text, parse_mode='Markdown')
+        await update.message.reply_text(help_text, parse_mode='Markdown')
+    
+    async def rus_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /rus - показ всех доступных подписок и статистики"""
+        try:
+            user_id = update.effective_user.id
+            logger.info(f"КОМАНДА /rus от пользователя {user_id}")
+            
+            # Создаем клавиатуру с кнопками подписок Stars и TON
+            keyboard = [
+                # Кнопки Stars
+                [InlineKeyboardButton("⭐ 25 звезд", callback_data="stars_25")],
+                [InlineKeyboardButton("⭐ 50 звезд", callback_data="stars_50")],
+                [InlineKeyboardButton("⭐ 75 звезд", callback_data="stars_75")],
+                [InlineKeyboardButton("⭐ 100 звезд", callback_data="stars_100")],
+                # Кнопки TON
+                [InlineKeyboardButton("💎 4 TON", callback_data="ton_4")],
+                [InlineKeyboardButton("💎 7 TON", callback_data="ton_7")],
+                [InlineKeyboardButton("💎 13 TON", callback_data="ton_13")],
+                # Дополнительные кнопки
+                [InlineKeyboardButton("📊 Общая статистика", callback_data="rus_stats")],
+                [InlineKeyboardButton("🔙 Назад в меню", callback_data="back")]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            message_text = """🇷🇺 **РУССКОЕ МЕНЮ**
+
+⭐ **ПОДПИСКИ ЗА ЗВЕЗДЫ:**
+• ⭐ 25 звезд - Базовый план
+• ⭐ 50 звезд - Расширенный план
+• ⭐ 75 звезд - Премиум план
+• ⭐ 100 звезд - VIP план
+
+💎 **ПОДПИСКИ ЗА TON:**
+• 💎 4 TON - На 150 человек
+• 💎 7 TON - На 100 человек
+• 💎 13 TON - На 50 человек
+
+📊 **ОБЩАЯ СТАТИСТИКА** - покажет текущую статистику подписок
+
+Выберите нужную подписку:"""
+            
+            await update.message.reply_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
+            logger.info(f"✅ Команда /rus выполнена для пользователя {user_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в rus_command: {e}")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
     
     # ===== СИСТЕМА ПОДТВЕРЖДЕНИЯ ОПЛАТ - ОСНОВНЫЕ ФУНКЦИИ =====
     
@@ -357,31 +390,31 @@ class PassiveNFTBot:
         
         # Проверка прав администратора
         if update.effective_user.id not in self.config.ADMIN_USER_IDS:
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Доступ запрещен. Только для администраторов.")))
+            await update.message.reply_text("❌ Доступ запрещен. Только для администраторов.")
             return
         
         try:
             # Меню выбора типа подписки
             keyboard = [
                 [
-                    InlineKeyboardButton(convert_emoji_codes("[STAR] 25 звезд"), callback_data="confirmpay_type_25_stars"),
-                    InlineKeyboardButton(convert_emoji_codes("[STAR] 50 звезд"), callback_data="confirmpay_type_50_stars")
+                    InlineKeyboardButton("⭐ 25 звезд", callback_data="confirmpay_type_25_stars"),
+                    InlineKeyboardButton("⭐ 50 звезд", callback_data="confirmpay_type_50_stars")
                 ],
                 [
-                    InlineKeyboardButton(convert_emoji_codes("[STAR] 75 звезд"), callback_data="confirmpay_type_75_stars"),
-                    InlineKeyboardButton(convert_emoji_codes("[STAR] 100 звезд"), callback_data="confirmpay_type_100_stars")
+                    InlineKeyboardButton("⭐ 75 звезд", callback_data="confirmpay_type_75_stars"),
+                    InlineKeyboardButton("⭐ 100 звезд", callback_data="confirmpay_type_100_stars")
                 ],
                 [
-                    InlineKeyboardButton("* 13 TON", callback_data="confirmpay_type_13_ton"),
-                    InlineKeyboardButton("* 7 TON", callback_data="confirmpay_type_7_ton")
+                    InlineKeyboardButton("💎 13 TON", callback_data="confirmpay_type_13_ton"),
+                    InlineKeyboardButton("💎 7 TON", callback_data="confirmpay_type_7_ton")
                 ],
                 [
-                    InlineKeyboardButton("* 4 TON", callback_data="confirmpay_type_4_ton"),
-                    InlineKeyboardButton("* 50 TON", callback_data="confirmpay_type_50_ton")
+                    InlineKeyboardButton("💎 4 TON", callback_data="confirmpay_type_4_ton"),
+                    InlineKeyboardButton("💎 50 TON", callback_data="confirmpay_type_50_ton")
                 ],
                 [
-                    InlineKeyboardButton("* 100 TON", callback_data="confirmpay_type_100_ton"),
-                    InlineKeyboardButton("* 150 TON", callback_data="confirmpay_type_150_ton")
+                    InlineKeyboardButton("💎 100 TON", callback_data="confirmpay_type_100_ton"),
+                    InlineKeyboardButton("💎 150 TON", callback_data="confirmpay_type_150_ton")
                 ],
                 [
                     InlineKeyboardButton("📊 История подтверждений", callback_data="confirmpay_history"),
@@ -393,8 +426,8 @@ class PassiveNFTBot:
 
 Выберите тип подписки для подтверждения:
 
-[STAR] **ЗВЕЗДОЧКИ:** 25, 50, 75, 100 (без комиссии)
-* **TON:** 4, 7, 13, 50, 100, 150 (10% комиссия рефереру)
+⭐ **ЗВЕЗДОЧКИ:** 25, 50, 75, 100 (без комиссии)
+💎 **TON:** 4, 7, 13, 50, 100, 150 (10% комиссия рефереру)
 
 📋 После выбора типа подписки:
 1. Введите username пользователя
@@ -405,16 +438,14 @@ class PassiveNFTBot:
 ⚡ Дополнительные функции: История и Статистика"""
             
             reply_markup = InlineKeyboardMarkup(keyboard)
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(message_text)
-            await update.message.reply_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await update.message.reply_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
             
             logger.info(f"✅ /confirmpay меню показано пользователю {update.effective_user.id}")
             
         except Exception as e:
-            logger.error(f"[X] Ошибка в confirmpay_command: {e}")
+            logger.error(f"❌ Ошибка в confirmpay_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
     
     async def confirmpay_subscription_type_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора типа подписки для подтверждения"""
@@ -422,7 +453,7 @@ class PassiveNFTBot:
         await query.answer()
         
         if update.effective_user.id not in self.config.ADMIN_USER_IDS:
-            await query.edit_message_text("[X] Доступ запрещен.")
+            await query.edit_message_text("❌ Доступ запрещен.")
             return
         
         try:
@@ -431,16 +462,16 @@ class PassiveNFTBot:
             
             # Определяем отображаемое название
             subscription_names = {
-                "25_stars": "[STAR] 25 звезд",
-                "50_stars": "[STAR] 50 звезд", 
-                "75_stars": "[STAR] 75 звезд",
-                "100_stars": "[STAR] 100 звезд",
-                "13_ton": "* 13 TON",
-                "7_ton": "* 7 TON",
-                "4_ton": "* 4 TON",
-                "50_ton": "* 50 TON",
-                "100_ton": "* 100 TON",
-                "150_ton": "* 150 TON"
+                "25_stars": "⭐ 25 звезд",
+                "50_stars": "⭐ 50 звезд", 
+                "75_stars": "⭐ 75 звезд",
+                "100_stars": "⭐ 100 звезд",
+                "13_ton": "💎 13 TON",
+                "7_ton": "💎 7 TON",
+                "4_ton": "💎 4 TON",
+                "50_ton": "💎 50 TON",
+                "100_ton": "💎 100 TON",
+                "150_ton": "💎 150 TON"
             }
             
             display_name = subscription_names.get(subscription_type, subscription_type)
@@ -451,18 +482,18 @@ class PassiveNFTBot:
             
             # Сохраняем в очередь ожидания
             self.confirmation_queue[query.from_user.id] = {
-                'subscription_type': subscription_type,
-                'step': 'waiting_username',
-                'timestamp': time.time()
-            }
-            
-            # Кнопка отмены
-            keyboard = [
-                [InlineKeyboardButton("❌ Отмена", callback_data="confirmpay_back")]
+            # Создание приложения с кастомным запросом
+            custom_request = TelegramRequest()
+            self.application = (
+                Application.builder()
+                .token(self.config.BOT_TOKEN)
+                .request(custom_request)
+                .build()
+            )
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            message_text = (
+            await query.edit_message_text(
                 f"✅ **ВЫБРАН ТИП ПОДПИСКИ:** {display_name}\n\n"
                 f"💰 **Метод оплаты:** {payment_method}\n"
                 f"{commission_info}\n\n"
@@ -472,19 +503,17 @@ class PassiveNFTBot:
                 f"• Создаст одноразовую invite ссылку\n"
                 f"• Отправит уведомление пользователю\n"
                 f"• Зафиксирует операцию в истории\n"
-                f"• Начислит комиссию рефереру (если есть)"
+                f"• Начислит комиссию рефереру (если есть)",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
             )
-            
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(message_text)
-            await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
             
             logger.info(f"✅ Выбран тип подписки {subscription_type} пользователем {query.from_user.id}")
             
         except Exception as e:
             logger.error(f"❌ Ошибка в confirmpay_subscription_type_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.edit_message_text(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.edit_message_text("❌ Произошла ошибка. Попробуйте позже.")
     
     async def confirmpay_back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик возврата в главное меню /confirmpay - ИСПРАВЛЕНО"""
@@ -494,7 +523,7 @@ class PassiveNFTBot:
             
             # ИСПРАВЛЕНО: используем query.from_user.id вместо update.effective_user.id
             if query.from_user.id not in self.config.ADMIN_USER_IDS:
-                await query.edit_message_text("[X] Доступ запрещен.")
+                await query.edit_message_text("❌ Доступ запрещен.")
                 return
             
             try:
@@ -514,13 +543,13 @@ class PassiveNFTBot:
                 
             except Exception as e:
                 logger.error(f"❌ Ошибка при возврате в меню confirmpay: {e}")
-                await query.edit_message_text("[X] Произошла ошибка. Попробуйте позже.")
+                await query.edit_message_text("❌ Произошла ошибка. Попробуйте позже.")
                 
         except Exception as e:
             logger.error(f"❌ Ошибка в confirmpay_back_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
             try:
-                await update.callback_query.answer("[X] Произошла ошибка. Попробуйте позже.")
+                await update.callback_query.answer("❌ Произошла ошибка. Попробуйте позже.")
             except:
                 pass  # Игнорируем ошибки ответа на callback
     
@@ -530,7 +559,7 @@ class PassiveNFTBot:
         await query.answer()
         
         if update.effective_user.id not in self.config.ADMIN_USER_IDS:
-            await query.edit_message_text("[X] Доступ запрещен.")
+            await query.edit_message_text("❌ Доступ запрещен.")
             return
         
         try:
@@ -565,15 +594,13 @@ class PassiveNFTBot:
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(message_text)
-            await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
             logger.info(f"✅ История подтверждений отправлена пользователю {query.from_user.id}")
             
         except Exception as e:
             logger.error(f"❌ Ошибка в confirmpay_history_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.edit_message_text(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.edit_message_text("❌ Произошла ошибка. Попробуйте позже.")
     
     async def confirmpay_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик показа статистики"""
@@ -581,7 +608,7 @@ class PassiveNFTBot:
         await query.answer()
         
         if update.effective_user.id not in self.config.ADMIN_USER_IDS:
-            await query.edit_message_text("[X] Доступ запрещен.")
+            await query.edit_message_text("❌ Доступ запрещен.")
             return
         
         try:
@@ -602,16 +629,16 @@ class PassiveNFTBot:
                 for sub_type, count in sorted(by_subscription.items(), key=lambda x: x[1], reverse=True):
                     # Форматируем название подписки
                     subscription_names = {
-                        "25_stars": "[STAR] 25 звезд",
-                        "50_stars": "[STAR] 50 звезд", 
-                        "75_stars": "[STAR] 75 звезд",
-                        "100_stars": "[STAR] 100 звезд",
-                        "13_ton": "* 13 TON",
-                        "7_ton": "* 7 TON",
-                        "4_ton": "* 4 TON",
-                        "50_ton": "* 50 TON",
-                        "100_ton": "* 100 TON",
-                        "150_ton": "* 150 TON"
+                        "25_stars": "⭐ 25 звезд",
+                        "50_stars": "⭐ 50 звезд", 
+                        "75_stars": "⭐ 75 звезд",
+                        "100_stars": "⭐ 100 звезд",
+                        "13_ton": "💎 13 TON",
+                        "7_ton": "💎 7 TON",
+                        "4_ton": "💎 4 TON",
+                        "50_ton": "💎 50 TON",
+                        "100_ton": "💎 100 TON",
+                        "150_ton": "💎 150 TON"
                     }
                     display_name = subscription_names.get(sub_type, sub_type)
                     message_text += f"\n• **{display_name}:** {count}"
@@ -624,15 +651,13 @@ class PassiveNFTBot:
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(message_text)
-            await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
             logger.info(f"✅ Статистика отправлена пользователю {query.from_user.id}")
             
         except Exception as e:
             logger.error(f"❌ Ошибка в confirmpay_stats_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.edit_message_text(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.edit_message_text("❌ Произошла ошибка. Попробуйте позже.")
     
     # ===== ОБРАБОТЧИК USERNAME ПОЛЬЗОВАТЕЛЯ - УЛУЧШЕННАЯ ВЕРСИЯ С РЕФЕРАЛЬНОЙ СИСТЕМОЙ =====
     
@@ -658,7 +683,7 @@ class PassiveNFTBot:
         except Exception as e:
             logger.error(f"❌ Ошибка в handle_message: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
     
     async def handle_username_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка ввода username пользователя для подтверждения оплаты - ИСПРАВЛЕННАЯ ВЕРСИЯ С РЕФЕРАЛАМИ"""
@@ -772,9 +797,6 @@ class PassiveNFTBot:
                 'link_id': secure_link
             })
             
-            # ИСПРАВЛЕНО: Правильная обработка реферальной системы
-            referral_result = {'referrer_found': False, 'referrer_id': None, 'commission_calculated': 0.0}
-            
             # Если есть реферер, начисляем комиссию
             if pending_referrer:
                 commission = await self.database.calculate_commission(
@@ -789,11 +811,6 @@ class PassiveNFTBot:
                         subscription_type=subscription_type,
                         payment_method=payment_method
                     )
-                    referral_result = {
-                        'referrer_found': True,
-                        'referrer_id': pending_referrer,
-                        'commission_calculated': commission
-                    }
             
             # Отправляем ссылку пользователю
             await self.send_subscription_link_to_user(username, subscription_type, secure_link, context)
@@ -804,7 +821,7 @@ class PassiveNFTBot:
 👤 **Пользователь:** @{username}
 📦 **Подписка:** {subscription_type}
 💰 **Метод оплаты:** {payment_method}
-* **Сумма:** {subscription_amount} TON"""
+💎 **Сумма:** {subscription_amount} TON"""
 
             if referral_result.get('referrer_found'):
                 admin_report += f"""
@@ -828,9 +845,7 @@ class PassiveNFTBot:
 🕒 **Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
 """
             
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_admin_report = escape_markdown(admin_report)
-            await update.message.reply_text(safe_admin_report, parse_mode='Markdown')
+            await update.message.reply_text(admin_report, parse_mode='Markdown')
             
             # Очищаем очередь ожидания
             del self.confirmation_queue[update.effective_user.id]
@@ -849,16 +864,16 @@ class PassiveNFTBot:
         try:
             # Определяем отображаемое название подписки
             subscription_names = {
-                "25_stars": "[STAR] 25 звезд",
-                "50_stars": "[STAR] 50 звезд", 
-                "75_stars": "[STAR] 75 звезд",
-                "100_stars": "[STAR] 100 звезд",
-                "13_ton": "* 13 TON",
-                "7_ton": "* 7 TON",
-                "4_ton": "* 4 TON",
-                "50_ton": "* 50 TON",
-                "100_ton": "* 100 TON",
-                "150_ton": "* 150 TON"
+                "25_stars": "⭐ 25 звезд",
+                "50_stars": "⭐ 50 звезд", 
+                "75_stars": "⭐ 75 звезд",
+                "100_stars": "⭐ 100 звезд",
+                "13_ton": "💎 13 TON",
+                "7_ton": "💎 7 TON",
+                "4_ton": "💎 4 TON",
+                "50_ton": "💎 50 TON",
+                "100_ton": "💎 100 TON",
+                "150_ton": "💎 150 TON"
             }
             display_name = subscription_names.get(subscription_type, subscription_type)
             
@@ -908,11 +923,9 @@ class PassiveNFTBot:
                 chat = await context.bot.get_chat(f"@{username}")
                 if chat.type == 'private':
                     # Прямая отправка по user_id
-                    # ИСПРАВЛЕНО: Экранирование Markdown перед отправкой
-                    safe_text = escape_markdown(message_text)
                     await context.bot.send_message(
                         chat_id=chat.id,
-                        text=safe_text,
+                        text=message_text,
                         parse_mode='Markdown'
                     )
                     logger.info(f"✅ Сообщение отправлено пользователю {username} через get_chat")
@@ -929,10 +942,9 @@ class PassiveNFTBot:
                     # Если пользователь является участником чата бота
                     if member.status in ['member', 'administrator', 'creator']:
                         # Попытка отправить через chat_id бота
-                        safe_text = escape_markdown(f"📬 Сообщение для @{username}:\n\n{message_text}")
                         await context.bot.send_message(
                             chat_id=bot_info.id,
-                            text=safe_text
+                            text=f"📬 Сообщение для @{username}:\n\n{message_text}"
                         )
                         logger.info(f"⚠️ Сообщение для {username} отправлено через бота (возможно недоступен)")
                         return
@@ -955,11 +967,9 @@ class PassiveNFTBot:
 {message_text}
 """
             
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_admin_message = escape_markdown(admin_message)
             await context.bot.send_message(
                 chat_id=context._user_id or self.config.ADMIN_USER_IDS[0],  # Fallback к первому админу
-                text=safe_admin_message,
+                text=admin_message,
                 parse_mode='Markdown'
             )
             logger.warning(f"⚠️ Не удалось отправить сообщение пользователю @{username}, админ уведомлен")
@@ -1023,7 +1033,7 @@ class PassiveNFTBot:
             # Проверяем права администратора
             user = update.effective_user
             if user.id not in self.config.ADMIN_USER_IDS:
-                await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] У вас нет доступа к реферальной статистике")))
+                await update.message.reply_text("❌ У вас нет доступа к реферальной статистике")
                 return
 
             # Получаем детальную реферальную статистику
@@ -1032,17 +1042,17 @@ class PassiveNFTBot:
             if not detailed_stats:
                 referral_text = """🔗 **РЕФЕРАЛЬНАЯ СТАТИСТИКА**
 
-[CHART] Данные о рефералах отсутствуют.
+📊 Данные о рефералах отсутствуют.
 Пока что никто не привлекал рефералов.
 """
             else:
-                referral_text = f"""[LINK] **ДЕТАЛЬНАЯ РЕФЕРАЛЬНАЯ СТАТИСТИКА**
+                referral_text = f"""🔗 **ДЕТАЛЬНАЯ РЕФЕРАЛЬНАЯ СТАТИСТИКА**
 
-[CHART] **Всего активных рефереров:** {len(detailed_stats)}
-[MONEY] **Общий заработок:** {sum(stat['total_earnings'] for stat in detailed_stats):.2f} TON
+📊 **Всего активных рефереров:** {len(detailed_stats)}
+💰 **Общий заработок:** {sum(stat['total_earnings'] for stat in detailed_stats):.2f} TON
 👥 **Всего рефералов:** {sum(stat['total_referrals'] for stat in detailed_stats)}
 
-[TROPHY] **ТОП-10 рефереров по заработку:**"""
+🏆 **ТОП-10 рефереров по заработку:**"""
 
                 for i, stat in enumerate(detailed_stats[:10], 1):
                     name = stat['referrer_username'] or 'Без username'
@@ -1052,18 +1062,16 @@ class PassiveNFTBot:
                     
                     referral_text += f"""
 **{i}.** @{name}
-   [PEOPLE] Рефералов: {referrals} ({ton_refs} TON)
-   [MONEY] Заработок: {earnings:.2f} TON"""
+   👥 Рефералов: {referrals} ({ton_refs} TON)
+   💰 Заработок: {earnings:.2f} TON"""
 
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(convert_emoji_codes(referral_text))
-            await update.message.reply_text(safe_text, parse_mode='Markdown')
-            logger.info(f"[CHECK] Детальная реферальная статистика отправлена пользователю {user.id}")
+            await update.message.reply_text(referral_text, parse_mode='Markdown')
+            logger.info(f"✅ Детальная реферальная статистика отправлена пользователю {user.id}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в admin_refstats_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def admin_refstat_by_username(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Команда реферальной статистики по конкретному username"""
@@ -1073,7 +1081,7 @@ class PassiveNFTBot:
             # Проверяем права администратора
             user = update.effective_user
             if user.id not in self.config.ADMIN_USER_IDS:
-                await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] У вас нет доступа к реферальной статистике")))
+                await update.message.reply_text("❌ У вас нет доступа к реферальной статистике")
                 return
 
             # Извлекаем username из команды
@@ -1106,9 +1114,9 @@ class PassiveNFTBot:
 
 👤 **Пользователь:** {name}
 📊 **Всего рефералов:** {user_stats['total_referrals']}
-[MONEY] **Общий заработок:** {user_stats['total_earnings']:.2f} TON
+💰 **Общий заработок:** {user_stats['total_earnings']:.2f} TON
 
-* **Детализация:**
+💎 **Детализация:**
 • TON рефералов: {user_stats['ton_referrals']}
 • Stars рефералы: {user_stats['stars_referrals']}
 • Заработок с TON: {user_stats['ton_earnings']:.2f} TON
@@ -1116,15 +1124,13 @@ class PassiveNFTBot:
 💡 **Комиссия:** 10% от TON-подписок рефералов
 📅 **Статистика актуальна на:** {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
 
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(referral_text)
-            await update.message.reply_text(safe_text, parse_mode='Markdown')
+            await update.message.reply_text(referral_text, parse_mode='Markdown')
             logger.info(f"✅ Статистика для @{username} отправлена пользователю {user.id}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в admin_refstat_by_username: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     # ===== СИСТЕМА ПОДПИСОК =====
 
@@ -1141,15 +1147,13 @@ class PassiveNFTBot:
             # КНОПКИ ВЫБОРА ТИПА ПОДПИСКИ
             keyboard = [
                 [InlineKeyboardButton("⚡ С активностями (за звездочки)", callback_data="select_stars")],
-                [InlineKeyboardButton("* Без активностей (за TON)", callback_data="select_ton")],
+                [InlineKeyboardButton("💎 Без активностей (за TON)", callback_data="select_ton")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="back")]
             ]
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
-                # ИСПРАВЛЕНО: Экранирование Markdown
-                safe_text = escape_markdown(subscription_text)
-                await query.message.edit_text(safe_text, reply_markup=reply_markup)
+                await query.message.edit_text(subscription_text, reply_markup=reply_markup)
                 logger.info(f"✅ Подписки открыты для пользователя {update.effective_user.id}")
             except BadRequest as e:
                 if "Message is not modified" in str(e):
@@ -1161,7 +1165,7 @@ class PassiveNFTBot:
         except Exception as e:
             logger.error(f"❌ Ошибка в subscription_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.answer(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def select_stars_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора звездочек"""
@@ -1175,10 +1179,10 @@ class PassiveNFTBot:
 Доступные тарифы с активностями:
 
 ⚡ **ПЛАНЫ:**
-* [STAR] 25 звезд - Базовый доступ (0.2 TON)
-* [STAR] 50 звезд - Расширенный доступ (0.4 TON)
-* [STAR] 75 звезд - Премиум доступ (0.6 TON)
-* [STAR] 100 звезд - VIP доступ (0.8 TON)
+• ⭐ 25 звезд - Базовый доступ (0.2 TON)
+• ⭐ 50 звезд - Расширенный доступ (0.4 TON)
+• ⭐ 75 звезд - Премиум доступ (0.6 TON)
+• ⭐ 100 звезд - VIP доступ (0.8 TON)
 
 🎮 **В каждом плане:**
 • Участие в активностях
@@ -1190,18 +1194,16 @@ class PassiveNFTBot:
 Выберите план:"""
 
             keyboard = [
-                [InlineKeyboardButton(convert_emoji_codes("[STAR] 25 звезд"), callback_data="stars_25")],
-                [InlineKeyboardButton(convert_emoji_codes("[STAR] 50 звезд"), callback_data="stars_50")],
-                [InlineKeyboardButton(convert_emoji_codes("[STAR] 75 звезд"), callback_data="stars_75")],
-                [InlineKeyboardButton(convert_emoji_codes("[STAR] 100 звезд"), callback_data="stars_100")],
+                [InlineKeyboardButton("⭐ 25 звезд", callback_data="stars_25")],
+                [InlineKeyboardButton("⭐ 50 звезд", callback_data="stars_50")],
+                [InlineKeyboardButton("⭐ 75 звезд", callback_data="stars_75")],
+                [InlineKeyboardButton("⭐ 100 звезд", callback_data="stars_100")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
             ]
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
-                # ИСПРАВЛЕНО: Экранирование Markdown
-                safe_text = escape_markdown(stars_text)
-                await query.message.edit_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+                await query.message.edit_text(stars_text, reply_markup=reply_markup, parse_mode='Markdown')
                 logger.info(f"✅ Звезды планы показаны пользователю {update.effective_user.id}")
             except BadRequest as e:
                 if "Message is not modified" in str(e):
@@ -1213,7 +1215,7 @@ class PassiveNFTBot:
         except Exception as e:
             logger.error(f"❌ Ошибка в select_stars_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.answer(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def select_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора TON"""
@@ -1222,19 +1224,19 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            ton_text = """* **ПОДПИСКИ ЗА TON**
+            ton_text = """💎 **ПОДПИСКИ ЗА TON**
 
 Доступные тарифы без активностей:
 
-* **ПЛАНЫ:**
-• * 4 TON - На 150 человек
-• * 7 TON - На 100 человек  
-• * 13 TON - На 50 человек
-• * 50 TON - VIP план
-• * 100 TON - Премиум план
-• * 150 TON - Максимальный план
+💎 **ПЛАНЫ:**
+• 💎 4 TON - На 150 человек
+• 💎 7 TON - На 100 человек  
+• 💎 13 TON - На 50 человек
+• 💎 50 TON - VIP план
+• 💎 100 TON - Премиум план
+• 💎 150 TON - Максимальный план
 
-[LOCK] **Особенности:**
+🔒 **Особенности:**
 • Только доступ к каналам
 • Без активностей и NFT
 • Стабильная подписка
@@ -1246,20 +1248,18 @@ class PassiveNFTBot:
 Выберите план:"""
 
             keyboard = [
-                [InlineKeyboardButton("* 4 TON", callback_data="ton_4")],
-                [InlineKeyboardButton("* 7 TON", callback_data="ton_7")],
-                [InlineKeyboardButton("* 13 TON", callback_data="ton_13")],
-                [InlineKeyboardButton("* 50 TON", callback_data="ton_50")],
-                [InlineKeyboardButton("* 100 TON", callback_data="ton_100")],
-                [InlineKeyboardButton("* 150 TON", callback_data="ton_150")],
+                [InlineKeyboardButton("💎 4 TON", callback_data="ton_4")],
+                [InlineKeyboardButton("💎 7 TON", callback_data="ton_7")],
+                [InlineKeyboardButton("💎 13 TON", callback_data="ton_13")],
+                [InlineKeyboardButton("💎 50 TON", callback_data="ton_50")],
+                [InlineKeyboardButton("💎 100 TON", callback_data="ton_100")],
+                [InlineKeyboardButton("💎 150 TON", callback_data="ton_150")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
             ]
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
-                # ИСПРАВЛЕНО: Экранирование Markdown
-                safe_text = escape_markdown(convert_emoji_codes(ton_text))
-                await query.message.edit_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+                await query.message.edit_text(ton_text, reply_markup=reply_markup, parse_mode='Markdown')
                 logger.info(f"✅ TON планы показаны пользователю {update.effective_user.id}")
             except BadRequest as e:
                 if "Message is not modified" in str(e):
@@ -1271,72 +1271,127 @@ class PassiveNFTBot:
         except Exception as e:
             logger.error(f"❌ Ошибка в select_ton_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.answer(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def stars_subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик подписки на звезды"""
         query = update.callback_query
         await query.answer()
         
-        # Извлекаем количество звезд
-        stars = int(query.data.split('_')[1])
+        logger.info(f"⭐ ПОЛУЧЕН CALLBACK: {query.data} от пользователя {update.effective_user.id}")
         
-        # Информация о планах
-        plan_info = {
-            25: {
-                'price': '25 ⭐',
-                'ton_equivalent': '0.2 TON',
-                'description': 'Базовый план с участием в активностях'
-            },
-            50: {
-                'price': '50 ⭐',
-                'ton_equivalent': '0.4 TON',
-                'description': 'Расширенный план с дополнительными функциями'
-            },
-            75: {
-                'price': '75 ⭐',
-                'ton_equivalent': '0.6 TON',
-                'description': 'Премиум план с приоритетным доступом'
-            },
-            100: {
-                'price': '100 ⭐',
-                'ton_equivalent': '0.8 TON',
-                'description': 'VIP план с эксклюзивными возможностями'
-            }
-        }
-        
-        info = plan_info.get(stars, {})
-        price = info.get('price', f'{stars} ⭐')
-        ton_eq = info.get('ton_equivalent', 'N/A')
-        description = info.get('description', 'Подписка на закрытый канал')
-        
-        # Получаем канал для данного количества звезд
-        channel_id = self.config.CHANNEL_MAPPINGS.get(stars)
-        
-        # Проверяем, есть ли у пользователя доступ
-        has_access = await self.check_user_access(update.effective_user.id, stars, 'stars')
-        
-        if has_access:
-            # Пользователь уже имеет доступ - показываем ссылку
-            channel_link = self.config.PRIVATE_CHANNEL_LINKS.get(f"{stars}_stars", "https://t.me/passivenft_channel")
+        try:
+            # Извлекаем количество звезд
+            data_parts = query.data.split('_')
+            if len(data_parts) < 2:
+                await query.answer("❌ Неверный формат callback")
+                return
+                
+            stars = int(data_parts[1])
+            logger.info(f"⭐ Обрабатываем подписку на {stars} звезд")
             
-            message_text = f"""🎉 **У ВАС УЖЕ ЕСТЬ ДОСТУП!**
+            # Информация о планах
+            plan_info = {
+                25: {
+                    'price': '25 ⭐',
+                    'ton_equivalent': '0.2 TON',
+                    'description': 'Базовый план с участием в активностях'
+                },
+                50: {
+                    'price': '50 ⭐',
+                    'ton_equivalent': '0.4 TON',
+                    'description': 'Расширенный план с дополнительными функциями'
+                },
+                75: {
+                    'price': '75 ⭐',
+                    'ton_equivalent': '0.6 TON',
+                    'description': 'Премиум план с приоритетным доступом'
+                },
+                100: {
+                    'price': '100 ⭐',
+                    'ton_equivalent': '0.8 TON',
+                    'description': 'VIP план с эксклюзивными возможностями'
+                }
+            }
+            
+            info = plan_info.get(stars, {})
+            price = info.get('price', f'{stars} ⭐')
+            ton_eq = info.get('ton_equivalent', 'N/A')
+            description = info.get('description', 'Подписка на закрытый канал')
+            
+            # Получаем канал для данного количества звезд
+            channel_id = self.config.CHANNEL_MAPPINGS.get(stars)
+            logger.info(f"⭐ Channel ID для {stars} звезд: {channel_id}")
+            
+            # Проверяем, есть ли у пользователя доступ
+            try:
+                has_access = await self.check_user_access(update.effective_user.id, stars, 'stars')
+                logger.info(f"⭐ Проверка доступа пользователя {update.effective_user.id}: {has_access}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка при проверке доступа: {e}")
+                has_access = False
+            
+            if has_access:
+                # Пользователь уже имеет доступ - показываем ссылку
+                channel_link = self.config.PRIVATE_CHANNEL_LINKS.get(f"{stars}_stars", "https://t.me/passivenft_channel")
+                
+                message_text = f"""🎉 **У ВАС УЖЕ ЕСТЬ ДОСТУП!**
 
 ✅ **Ваш план:** {price} ({ton_eq})
+📝 **Описание:** {description}
+
+🔗 **Ссылка на канал:** {channel_link}
+
+💡 **Для получения справки нажмите** /help"""
+                
+                # Клавиатура с дополнительными действиями
+                keyboard = [
+                    [InlineKeyboardButton("📢 Отправить менеджеру для подтверждения", callback_data="confirmpay")],
+                    [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
+                ]
+            else:
+                # Пользователь не имеет доступа - предлагаем купить
+                message_text = f"""💳 **{price} ({ton_eq})**
+
+📝 **Что входит в подписку:**
+{description"""
+
+                # Создаем клавиатуру для покупки
+                keyboard = [
+                    [InlineKeyboardButton("✅ Купить подписку", callback_data=f"payment_stars_{stars}")],
+                    [InlineKeyboardButton("❓ Подробности", callback_data="confirmpay")],
+                    [InlineKeyboardButton("🔙 Назад", callback_data="subscription")]
+                ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            try:
+                await query.message.edit_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
+                logger.info(f"✅ Информация о {stars} звездах показана пользователю {update.effective_user.id}")
+            except BadRequest as e:
+                if "Message is not modified" in str(e):
+                    await query.answer("Информация уже показана!")
+                    logger.info(f"ℹ️ Информация о {stars} звездах уже показана для пользователя {update.effective_user.id}")
+                else:
+                    logger.error(f"❌ Ошибка BadRequest в stars_subscription_callback: {e}")
+                    raise
+                    
+        except Exception as e:
+            logger.error(f"❌ Ошибка в stars_subscription_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 📖 **Описание:** {description}
 
 🔗 **Ссылка на канал:** {channel_link}
 
-* **Наслаждайтесь активностями и получайте NFT!**
+💎 **Наслаждайтесь активностями и получайте NFT!**
 
 💡 **Реферальная система:** За Stars подписки комиссия рефереру не начисляется
 """
             keyboard = [[InlineKeyboardButton("📢 Написать менеджеру", url=f"https://t.me/{self.config.MANAGER_USERNAME}")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(convert_emoji_codes(message_text))
-            await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
             return
         
         # Пользователь не имеет доступа - показываем инструкции по покупке
@@ -1351,7 +1406,7 @@ class PassiveNFTBot:
 
 ⭐ **Важно:** Звездочки покупаются в настройках Telegram Premium
 
-* **После покупки:** Получите мгновенный доступ к каналу!
+💎 **После покупки:** Получите мгновенный доступ к каналу!
 
 💡 **Реферальная система:** За Stars подписки комиссия рефереру не начисляется
 
@@ -1362,9 +1417,7 @@ class PassiveNFTBot:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # ИСПРАВЛЕНО: Экранирование Markdown
-        safe_text = escape_markdown(convert_emoji_codes(message_text))
-        await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+        await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
         
     async def ton_subscription_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик подписки на TON"""
@@ -1430,22 +1483,20 @@ class PassiveNFTBot:
 
 🔗 **Ссылка на канал:** {channel_link}
 
-* **Наслаждайтесь закрытым сообществом!**
+💎 **Наслаждайтесь закрытым сообществом!**
 
 💰 **Реферальная система:** Ваш реферер получил 10% комиссии ({ton_amount * 0.1:.1f} TON)
 """
             keyboard = [[InlineKeyboardButton("📢 Написать менеджеру", url=f"https://t.me/{self.config.MANAGER_USERNAME}")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(convert_emoji_codes(message_text))
-            await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
             return
         
         # Пользователь не имеет доступа - показываем инструкции по покупке
         commission_info = f"Ваш реферер получит {ton_amount * 0.1:.1f} TON комиссии"
         
-        message_text = f"""* **ПЛАН: {price} ({name})**
+        message_text = f"""💎 **ПЛАН: {price} ({name})**
 
 📖 **Описание:** {description}
 
@@ -1466,14 +1517,12 @@ class PassiveNFTBot:
 *Нужна помощь? Напишите @{self.config.MANAGER_USERNAME}*
 """
         keyboard = [
-            [InlineKeyboardButton(convert_emoji_codes("[CLIPBOARD] Скопировать адрес"), callback_data="copy_ton")],
+            [InlineKeyboardButton("📋 Скопировать адрес", callback_data="copy_ton")],
             [InlineKeyboardButton("💬 Связаться с менеджером", callback_data="contact")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # ИСПРАВЛЕНО: Экранирование Markdown
-        safe_text = escape_markdown(convert_emoji_codes(message_text))
-        await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+        await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def payment_stars_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик оплаты звездами"""
@@ -1501,12 +1550,10 @@ class PassiveNFTBot:
 
 ❓ **Вопросы?** @{self.config.STARS_USERNAME}
 """
-        keyboard = [[InlineKeyboardButton(convert_emoji_codes("[SPEECH] Написать менеджеру"), url=f"https://t.me/{self.config.STARS_USERNAME}")]]
+        keyboard = [[InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{self.config.STARS_USERNAME}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # ИСПРАВЛЕНО: Экранирование Markdown
-        safe_text = escape_markdown(convert_emoji_codes(message_text))
-        await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+        await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def payment_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик оплаты TON"""
@@ -1516,7 +1563,7 @@ class PassiveNFTBot:
         ton_amount = int(query.data.split('_')[2])
         commission = ton_amount * 0.1
         
-        message_text = f"""* **ОПЛАТА: {ton_amount} TON**
+        message_text = f"""💎 **ОПЛАТА: {ton_amount} TON**
 
 💰 **Инструкция по оплате:**
 1. Скопируйте адрес кошелька
@@ -1531,7 +1578,7 @@ class PassiveNFTBot:
 • Получите ссылку на канал
 • Мгновенный доступ
 
-[LOCK] **Безопасность:**
+🔒 **Безопасность:**
 • Оплата только на указанный адрес
 • Подтверждение менеджером
 • Прозрачные условия
@@ -1541,14 +1588,12 @@ class PassiveNFTBot:
 ❓ **Вопросы?** @{self.config.MANAGER_USERNAME}
 """
         keyboard = [
-            [InlineKeyboardButton(convert_emoji_codes("[CLIPBOARD] Скопировать адрес"), callback_data="copy_ton")],
-            [InlineKeyboardButton(convert_emoji_codes("[SPEECH] Написать менеджеру"), url=f"https://t.me/{self.config.MANAGER_USERNAME}")]
+            [InlineKeyboardButton("📋 Скопировать адрес", callback_data="copy_ton")],
+            [InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{self.config.MANAGER_USERNAME}")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # ИСПРАВЛЕНО: Экранирование Markdown
-        safe_text = escape_markdown(convert_emoji_codes(message_text))
-        await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+        await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def payment_stars_check_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик проверки оплаты звездами"""
@@ -1572,12 +1617,10 @@ class PassiveNFTBot:
 
 💡 **Реферальная система:** Комиссия за Stars подписки не начисляется
 """
-        keyboard = [[InlineKeyboardButton(convert_emoji_codes("[SPEECH] Написать менеджеру"), url=f"https://t.me/{self.config.STARS_USERNAME}")]]
+        keyboard = [[InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{self.config.STARS_USERNAME}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # ИСПРАВЛЕНО: Экранирование Markdown
-        safe_text = escape_markdown(convert_emoji_codes(message_text))
-        await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+        await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     async def payment_ton_check_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик проверки оплаты TON"""
@@ -1602,117 +1645,87 @@ class PassiveNFTBot:
 💰 **Реферальная система:** Ваш реферер получит комиссию 10%
 """
         keyboard = [
-            [InlineKeyboardButton(convert_emoji_codes("[CLIPBOARD] Скопировать адрес"), callback_data="copy_ton")],
-            [InlineKeyboardButton(convert_emoji_codes("[SPEECH] Написать менеджеру"), url=f"https://t.me/{self.config.MANAGER_USERNAME}")]
+            [InlineKeyboardButton("📋 Скопировать адрес", callback_data="copy_ton")],
+            [InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{self.config.MANAGER_USERNAME}")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # ИСПРАВЛЕНО: Экранирование Markdown
-        safe_text = escape_markdown(convert_emoji_codes(message_text))
-        await query.edit_message_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+        await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
 
     # ===== СИСТЕМА РЕФЕРАЛОВ =====
     
     async def referral_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик кнопки 'Реферальная система' - ВРЕМЕННО ОТКЛЮЧЕНА"""
+        """Обработчик кнопки 'Реферальная система'"""
         logger.info(f"КОМАНДА ПОЛУЧЕНА: referral callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # ВРЕМЕННО ОТКЛЮЧЕННАЯ РЕФЕРАЛЬНАЯ СИСТЕМА
-            referral_text = """🚧 **РЕФЕРАЛЬНАЯ СИСТЕМА ВРЕМЕННО НЕДОСТУПНА**
+            referral_text = f"""👥 **РЕФЕРАЛЬНАЯ СИСТЕМА PassiveNFT**
 
-🔧 **Статус:** В стадии доработки
-⏰ **Ожидаемое время включения:** В ближайшее время
+💰 **Как это работает:**
+• Делитесь своей реферальной ссылкой с друзьями
+• Когда друг покупает подписку за TON, вы получаете 10% комиссию
+• За Stars подписки комиссия не начисляется
 
-💡 **Что готовится:**
-• Автоматический расчет комиссий
-• Интеграция с системой подписок
-• Детальная статистика
-• Удобный интерфейс
+🎯 **Ваша реферальная ссылка:**
+https://t.me/{self.config.BOT_USERNAME}?start=ref_{update.effective_user.id}
 
-🎯 **После запуска вы сможете:**
-• Приглашать друзей через реферальные ссылки
-• Получать 10% комиссии с TON-подписок
-• Отслеживать свою статистику
-• Зарабатывать пассивный доход
+💡 **Преимущества:**
+• Пассивный доход от приглашений
+• 10% с каждой TON-подписки реферала
+• Без ограничений по количеству рефералов
 
-💰 **Уведомления:**
-• Мы обязательно уведомим всех о запуске!
-• Система будет полностью автоматизирована
-• Больше друзей = больше дохода
+🔗 **Пример заработка:**
+• Друг покупает за 13 TON → Вы получаете 1.3 TON
+• Друг покупает за 50 TON → Вы получаете 5 TON
+• Больше друзей = больше дохода!"""
 
-🔥 **Следите за обновлениями!**"""
-
-            # Кнопки для временно отключенной реферальной системы
+            # Кнопки реферальной системы
             keyboard = [
+                [InlineKeyboardButton("📊 Моя статистика", callback_data="referral_stats")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="back")]
             ]
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
-                # ИСПРАВЛЕНО: Экранирование Markdown
-                safe_text = escape_markdown(referral_text)
-                await query.message.edit_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
-                logger.info(f"ℹ️ Реферальная система показана как 'временно недоступна' для пользователя {update.effective_user.id}")
+                await query.message.edit_text(referral_text, reply_markup=reply_markup, parse_mode='Markdown')
+                logger.info(f"✅ Реферальная система открыта для пользователя {update.effective_user.id}")
             except BadRequest as e:
                 if "Message is not modified" in str(e):
-                    await query.answer("Уведомление о реферальной системе уже показано!")
-                    logger.info(f"ℹ️ Уведомление уже показано для пользователя {update.effective_user.id}")
+                    await query.answer("Реферальная система уже открыта!")
+                    logger.info(f"ℹ️ Реферальная система уже открыта для пользователя {update.effective_user.id}")
                 else:
-                    await query.answer("Ошибка при показе информации.")
+                    await query.answer("Ошибка при открытии реферальной системы.")
                     logger.error(f"❌ Ошибка BadRequest в referral_callback: {e}")
         except Exception as e:
             logger.error(f"❌ Ошибка в referral_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.answer(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def referral_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик статистики рефералов - ВРЕМЕННО ОТКЛЮЧЕН"""
+        """Обработчик статистики рефералов"""
         logger.info(f"КОМАНДА ПОЛУЧЕНА: referral_stats callback от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
 
-            # ВРЕМЕННО ОТКЛЮЧЕННАЯ СТАТИСТИКА РЕФЕРАЛОВ
-            stats_text = """📊 **СТАТИСТИКА РЕФЕРАЛОВ**
-
-🚧 **Временно недоступна**
-
-🔧 **Статус:** Реферальная система в стадии доработки
-⏰ **Ожидаемое время включения:** В ближайшее время
-
-💡 **После запуска вы увидите:**
-• Общее количество рефералов
-• Сумму заработанных комиссий
-• Детальную статистику по каждому рефералу
-• График роста доходов
-
-💰 **Примеры статистики:**
-• Рефералов: 5 человек
-• Заработок: 2.5 TON
-• Комиссия: 10% с каждой TON-подписки
-
-📈 **Следите за обновлениями!**
-Мы обязательно уведомим всех о запуске системы.
-
-🎯 **Пока можете:**
-• Подготавливать список друзей для приглашений
-• Изучать информацию о подписках
-• Готовиться к активному заработку"""
+            # Получаем статистику пользователя
+            stats_text = await self.database.get_user_referral_stats(query.from_user.id)
+            if stats_text:
+                stats_text = self.config.REFERRAL_STATS_MESSAGE.format(referrals_info=stats_text)
+            else:
+                stats_text = "У вас пока нет рефералов.\n💡 Поделитесь своей реферальной ссылкой с друзьями!"
 
             # Кнопка "Назад"
             keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="referral")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(stats_text)
-            await query.message.edit_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
-            logger.info(f"ℹ️ Статистика рефералов показана как 'временно недоступна' для пользователя {query.from_user.id}")
+            await query.message.edit_text(stats_text, reply_markup=reply_markup, parse_mode='Markdown')
+            logger.info(f"✅ Статистика рефералов отправлена пользователю {query.from_user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в referral_stats_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.answer(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     # ===== СВЯЗЬ И ПОДДЕРЖКА =====
     
@@ -1752,16 +1765,14 @@ class PassiveNFTBot:
 """
 
             keyboard = [
-                [InlineKeyboardButton(convert_emoji_codes("[SPEECH] Написать менеджеру"), url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
+                [InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{self.config.MANAGER_USERNAME}")],
                 [InlineKeyboardButton("⭐ Написать менеджеру звезд", url=f"https://t.me/{self.config.STARS_USERNAME}")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="back")]
             ]
 
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
-                # ИСПРАВЛЕНО: Экранирование Markdown
-                safe_text = escape_markdown(contact_text)
-                await query.message.edit_text(safe_text, reply_markup=reply_markup, parse_mode='Markdown')
+                await query.message.edit_text(contact_text, reply_markup=reply_markup, parse_mode='Markdown')
                 logger.info(f"✅ Контакты показаны пользователю {update.effective_user.id}")
             except BadRequest as e:
                 if "Message is not modified" in str(e):
@@ -1773,7 +1784,7 @@ class PassiveNFTBot:
         except Exception as e:
             logger.error(f"❌ Ошибка в contact_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.answer(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def copy_ton_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик копирования TON адреса"""
@@ -1782,15 +1793,15 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
 
-            copy_message = f"Адрес кошелька скопирован!\n\n`{self.config.TON_WALLET_ADDRESS}`\n\nОтправьте указанную сумму TON."
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_copy_message = escape_markdown(copy_message)
-            await query.message.edit_text(safe_copy_message, parse_mode='Markdown')
+            await query.message.edit_text(
+                f"Адрес кошелька скопирован!\n\n`{self.config.TON_WALLET_ADDRESS}`\n\nОтправьте указанную сумму TON.",
+                parse_mode='Markdown'
+            )
             logger.info(f"✅ Адрес TON скопирован для пользователя {update.effective_user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в copy_ton_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.answer(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик кнопки 'Назад' - возврат к главному меню"""
@@ -1810,9 +1821,7 @@ class PassiveNFTBot:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             try:
-                # ИСПРАВЛЕНО: Экранирование Markdown
-                safe_text = escape_markdown(welcome_text)
-                await query.message.edit_text(safe_text, reply_markup=reply_markup)
+                await query.message.edit_text(welcome_text, reply_markup=reply_markup)
                 logger.info(f"✅ Возврат к главному меню для пользователя {update.effective_user.id}")
             except BadRequest as e:
                 if "Message is not modified" not in str(e):
@@ -1824,7 +1833,105 @@ class PassiveNFTBot:
         except Exception as e:
             logger.error(f"❌ Ошибка в back_callback: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await query.answer(escape_markdown("[X] Произошла ошибка. Попробуйте позже."))
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+    
+    async def rus_stats_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик кнопки 'Общая статистика' в команде /rus"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: rus_stats callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Получаем общую статистику
+            stats_data = await self.database.get_general_stats()
+            
+            stats_text = f"""📊 **ОБЩАЯ СТАТИСТИКА**
+
+⭐ **ПОДПИСКИ ЗА ЗВЕЗДЫ:**
+• 25 звезд: {stats_data.get('stars_25', 0)}
+• 50 звезд: {stats_data.get('stars_50', 0)}  
+• 75 звезд: {stats_data.get('stars_75', 0)}
+• 100 звезд: {stats_data.get('stars_100', 0)}
+
+💎 **ПОДПИСКИ ЗА TON:**
+• 4 TON: {stats_data.get('ton_4', 0)}
+• 7 TON: {stats_data.get('ton_7', 0)}
+• 13 TON: {stats_data.get('ton_13', 0)}
+• 50 TON: {stats_data.get('ton_50', 0)}
+• 100 TON: {stats_data.get('ton_100', 0)}
+• 150 TON: {stats_data.get('ton_150', 0)}
+
+👥 **РЕФЕРАЛЬНАЯ СИСТЕМА:**
+• Общее количество рефералов: {stats_data.get('total_referrals', 0)}
+• Общая комиссия: {stats_data.get('total_commission', 0)} TON
+
+🔄 **ОБЩАЯ СТАТИСТИКА ОБНОВЛЕНА**
+Обновлено: {datetime.now().strftime('%d.%m.%Y %H:%M')}"""
+
+            # Создаем клавиатуру
+            keyboard = [
+                [InlineKeyboardButton("🔄 Обновить статистику", callback_data="rus_stats")],
+                [InlineKeyboardButton("🔙 Назад к подпискам", callback_data="rus_back")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.message.edit_text(stats_text, reply_markup=reply_markup, parse_mode='Markdown')
+            logger.info(f"✅ Статистика показана пользователю {update.effective_user.id}")
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка в rus_stats_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Ошибка при получении статистики. Попробуйте позже.")
+
+    async def rus_back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик кнопки 'Назад к подпискам' в статистике /rus"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: rus_back callback от пользователя {update.effective_user.id}")
+        try:
+            query = update.callback_query
+            await query.answer()
+
+            # Повторно показываем меню /rus
+            keyboard = [
+                # Кнопки Stars
+                [InlineKeyboardButton("⭐ 25 звезд", callback_data="stars_25")],
+                [InlineKeyboardButton("⭐ 50 звезд", callback_data="stars_50")],
+                [InlineKeyboardButton("⭐ 75 звезд", callback_data="stars_75")],
+                [InlineKeyboardButton("⭐ 100 звезд", callback_data="stars_100")],
+                # Кнопки TON
+                [InlineKeyboardButton("💎 4 TON", callback_data="ton_4")],
+                [InlineKeyboardButton("💎 7 TON", callback_data="ton_7")],
+                [InlineKeyboardButton("💎 13 TON", callback_data="ton_13")],
+                # Дополнительные кнопки
+                [InlineKeyboardButton("📊 Общая статистика", callback_data="rus_stats")],
+                [InlineKeyboardButton("🔙 Назад в меню", callback_data="back")]
+            ]
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            message_text = """🇷🇺 **РУССКОЕ МЕНЮ**
+
+⭐ **ПОДПИСКИ ЗА ЗВЕЗДЫ:**
+• ⭐ 25 звезд - Базовый план
+• ⭐ 50 звезд - Расширенный план
+• ⭐ 75 звезд - Премиум план
+• ⭐ 100 звезд - VIP план
+
+💎 **ПОДПИСКИ ЗА TON:**
+• 💎 4 TON - На 150 человек
+• 💎 7 TON - На 100 человек
+• 💎 13 TON - На 50 человек
+
+📊 **ОБЩАЯ СТАТИСТИКА** - покажет текущую статистику подписок
+
+Выберите нужную подписку:"""
+            
+            await query.message.edit_text(message_text, reply_markup=reply_markup, parse_mode='Markdown')
+            logger.info(f"✅ Возврат к меню /rus для пользователя {update.effective_user.id}")
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка в rus_back_callback: {e}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await query.answer("❌ Ошибка. Попробуйте позже.")
 
     # ===== АДМИН КОМАНДЫ =====
     
@@ -1836,7 +1943,7 @@ class PassiveNFTBot:
 
             # Проверяем, является ли пользователь админом
             if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-                await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] У вас нет доступа к админ панели")))
+                await update.message.reply_text("❌ У вас нет доступа к админ панели")
                 logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
                 return
 
@@ -1865,15 +1972,13 @@ class PassiveNFTBot:
 ✅ Детальная статистика для админов
 ✅ Комиссия только за TON, не за Stars"""
 
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(admin_text)
-            await update.message.reply_text(safe_text, parse_mode='Markdown')
+            await update.message.reply_text(admin_text, parse_mode='Markdown')
             logger.info(f"✅ Админ панель показана пользователю {user.id}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в admin_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def admin_stat_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды статистики"""
@@ -1883,7 +1988,7 @@ class PassiveNFTBot:
             # Проверяем права администратора
             user = update.effective_user
             if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-                await update.message.reply_text("[X] У вас нет доступа к статистике")
+                await update.message.reply_text("❌ У вас нет доступа к статистике")
                 return
 
             # Получаем статистику из базы данных
@@ -1894,7 +1999,7 @@ class PassiveNFTBot:
                 stats_text = f"""📊 **СТАТИСТИКА PassiveNFT Bot**
 
 👥 **Пользователи:** {await self.database.get_all_users_count()}
-* **Подписки за TON:** {sum(1 for sub_type in stats.get('by_subscription_type', {}) if 'ton' in sub_type)} типов
+💎 **Подписки за TON:** {sum(1 for sub_type in stats.get('by_subscription_type', {}) if 'ton' in sub_type)} типов
 ⭐ **Подписки за звезды:** {sum(1 for sub_type in stats.get('by_subscription_type', {}) if 'stars' in sub_type)} типов
 👥 **Рефералы:** {await self.database.get_total_referrals_count()}
 
@@ -1904,7 +2009,7 @@ class PassiveNFTBot:
 • За неделю: {stats.get('week_confirmations', 0)}
 • За месяц: {stats.get('month_confirmations', 0)}
 
-* **Реферальная система:**
+💎 **Реферальная система:**
 • Общий заработок рефереров: {referral_earnings:.2f} TON
 • Комиссия: 10% от TON-подписок
 
@@ -1913,15 +2018,13 @@ class PassiveNFTBot:
             else:
                 stats_text = "📊 Статистика недоступна"
                 
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(stats_text)
-            await update.message.reply_text(safe_text, parse_mode='Markdown')
+            await update.message.reply_text(stats_text, parse_mode='Markdown')
             logger.info(f"✅ Статистика отправлена пользователю {user.id}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в admin_stat_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def admin_people_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды списка участников"""
@@ -1931,7 +2034,7 @@ class PassiveNFTBot:
             # Проверяем права администратора
             user = update.effective_user
             if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-                await update.message.reply_text("[X] У вас нет доступа к списку участников")
+                await update.message.reply_text("❌ У вас нет доступа к списку участников")
                 return
 
             # Получаем список пользователей
@@ -1951,15 +2054,13 @@ class PassiveNFTBot:
             else:
                 users_text = "👥 Пользователи не найдены"
                 
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(users_text)
-            await update.message.reply_text(safe_text, parse_mode='Markdown')
+            await update.message.reply_text(users_text, parse_mode='Markdown')
             logger.info(f"✅ Список пользователей отправлен пользователю {user.id}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в admin_people_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def admin_referral_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды реферальной статистики"""
@@ -1969,7 +2070,7 @@ class PassiveNFTBot:
             # Проверяем права администратора
             user = update.effective_user
             if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-                await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] У вас нет доступа к реферальной статистике")))
+                await update.message.reply_text("❌ У вас нет доступа к реферальной статистике")
                 return
 
             # Получаем реферальную статистику
@@ -1995,15 +2096,13 @@ class PassiveNFTBot:
             else:
                 referral_text = "🔗 Реферальная статистика недоступна"
                 
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(referral_text)
-            await update.message.reply_text(safe_text, parse_mode='Markdown')
+            await update.message.reply_text(referral_text, parse_mode='Markdown')
             logger.info(f"✅ Реферальная статистика отправлена пользователю {user.id}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в admin_referral_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def broadcast_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды рассылки"""
@@ -2013,7 +2112,7 @@ class PassiveNFTBot:
             # Проверяем права администратора
             user = update.effective_user
             if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-                await update.message.reply_text("[X] У вас нет доступа к рассылке")
+                await update.message.reply_text("❌ У вас нет доступа к рассылке")
                 return
 
             # Извлекаем сообщение из команды
@@ -2039,11 +2138,9 @@ class PassiveNFTBot:
                 try:
                     user_id = user_data.get('id')
                     if user_id:
-                        # ИСПРАВЛЕНО: Экранирование Markdown в рассылке
-                        safe_message = escape_markdown(f"📢 **ОБЪЯВЛЕНИЕ**\n\n{message_to_send}")
                         await context.bot.send_message(
                             chat_id=user_id,
-                            text=safe_message,
+                            text=f"📢 **ОБЪЯВЛЕНИЕ**\n\n{message_to_send}",
                             parse_mode='Markdown'
                         )
                         sent_count += 1
@@ -2061,15 +2158,13 @@ class PassiveNFTBot:
 
 📝 **Сообщение:**
 {message_to_send}"""
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_report = escape_markdown(report)
-            await update.message.reply_text(safe_report, parse_mode='Markdown')
+            await update.message.reply_text(report, parse_mode='Markdown')
             logger.info(f"✅ Рассылка завершена: {sent_count} отправлено, {failed_count} ошибок")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в broadcast_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def test_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Тестовая команда"""
@@ -2079,7 +2174,7 @@ class PassiveNFTBot:
             # Проверяем права администратора
             user = update.effective_user
             if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-                await update.message.reply_text("[X] У вас нет доступа к тестовой команде")
+                await update.message.reply_text("❌ У вас нет доступа к тестовой команде")
                 return
 
             test_info = f"""🧪 **ТЕСТОВАЯ КОМАНДА**
@@ -2100,22 +2195,16 @@ class PassiveNFTBot:
 • Автоматический расчет при подтверждении
 • Детальная статистика для админов
 
-🛡️ **Markdown экранирование:**
-• Исправлены ошибки Telegram API
-• Безопасная отправка сообщений
-
 🔧 **Все функции работают!**
 """
             
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(test_info)
-            await update.message.reply_text(safe_text, parse_mode='Markdown')
+            await update.message.reply_text(test_info, parse_mode='Markdown')
             logger.info(f"✅ Тестовая команда выполнена для пользователя {user.id}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в test_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     # ===== НОВЫЕ КОМАНДЫ ДЛЯ РАБОТЫ С КАНАЛАМИ =====
     
@@ -2127,7 +2216,7 @@ class PassiveNFTBot:
             # Проверяем права администратора
             user = update.effective_user
             if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-                await update.message.reply_text("[X] У вас нет доступа к информации о каналах")
+                await update.message.reply_text("❌ У вас нет доступа к информации о каналах")
                 return
 
             # Формируем информацию о каналах
@@ -2140,11 +2229,11 @@ class PassiveNFTBot:
                 channel_info += f"\n• ⭐ {stars} звезд → {channel_id}"
                 channel_info += f"\n  Ссылка: {link[:50]}..."
             
-            channel_info += "\n\n* **КАНАЛЫ ЗА TON:**\n"
+            channel_info += "\n\n💎 **КАНАЛЫ ЗА TON:**\n"
             
             for ton_amount, channel_id in self.config.TON_CHANNEL_MAPPINGS.items():
                 link = self.config.PRIVATE_CHANNEL_LINKS.get(f"{ton_amount}_ton", "ссылка не найдена")
-                channel_info += f"• * {ton_amount} TON → {channel_id}\n"
+                channel_info += f"• 💎 {ton_amount} TON → {channel_id}\n"
                 channel_info += f"  Ссылка: {link[:50]}...\n"
             
             channel_info += f"""🔧 **УПРАВЛЕНИЕ:**
@@ -2159,15 +2248,13 @@ class PassiveNFTBot:
 🕒 **Обновлено:** {datetime.now().strftime('%d.%m.%Y %H:%M')}
 """
             
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(channel_info)
-            await update.message.reply_text(safe_text, parse_mode='Markdown')
+            await update.message.reply_text(channel_info, parse_mode='Markdown')
             logger.info(f"✅ Информация о каналах отправлена пользователю {user.id}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в channel_info_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def get_channel_id_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Команда получения ID текущего канала"""
@@ -2177,7 +2264,7 @@ class PassiveNFTBot:
             # Проверяем права администратора
             user = update.effective_user
             if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
-                await update.message.reply_text("[X] У вас нет доступа к этой команде")
+                await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
             # Получаем информацию о чате
@@ -2204,15 +2291,13 @@ self.TON_CHANNEL_MAPPINGS = {{
             else:
                 channel_info = "❌ Информация о чате недоступна"
                 
-            # ИСПРАВЛЕНО: Экранирование Markdown
-            safe_text = escape_markdown(channel_info)
-            await update.message.reply_text(safe_text, parse_mode='Markdown')
+            await update.message.reply_text(channel_info, parse_mode='Markdown')
             logger.info(f"✅ Информация о канале отправлена пользователю {user.id}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в get_channel_id_command: {e}")
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await update.message.reply_text(escape_markdown(convert_emoji_codes("[X] Произошла ошибка. Попробуйте позже.")))
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     # ===== ПРОВЕРКА ДОСТУПА =====
     
@@ -2371,8 +2456,7 @@ async def main():
         logger.info(f"💰 Кошелек: {bot.config.TON_WALLET_ADDRESS[:20]}...")
         logger.info(f"✅ Реферальная система включена (комиссия только за TON)")
         logger.info(f"⭐ Активные подписки за звездочки включены")
-        logger.info(f"* Все виды TON подписок: 4, 7, 13, 50, 100, 150 TON")
-        logger.info(f"🛡️ Markdown экранирование активно (исправлены ошибки Telegram)")
+        logger.info(f"💎 Все виды TON подписок: 4, 7, 13, 50, 100, 150 TON")
         
         # Запускаем бота
         await bot.run()
