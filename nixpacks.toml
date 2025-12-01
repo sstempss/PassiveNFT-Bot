@@ -1,5 +1,12 @@
+[variables]
+PYTHON_VERSION = "3.14"
+
 [phases.build]
-cmds = ["pip install -r requirements.txt"]
+cmds = [
+    "export PIP_DEFAULT_TIMEOUT=100",
+    "export PIP_DISABLE_PIP_VERSION_CHECK=1", 
+    "pip install --no-cache-dir --prefer-binary -r requirements.txt"
+]
 
 [phases.start]
 cmd = "python bot_deploy.py"
