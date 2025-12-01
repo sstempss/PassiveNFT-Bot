@@ -9,4 +9,4 @@ cmds = [
 ]
 
 [phases.start]
-cmd = "python bot_deploy_FIXED_FINAL.py"
+cmd = "python bot_deploy.py"
