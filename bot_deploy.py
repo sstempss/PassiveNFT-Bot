@@ -276,7 +276,7 @@ class SafeConfig:
 ❓ если у вас всё еще остались вопросы, нажмите кнопку "Связь" для обращения к менеджеру по вопросам."""
 
         # ИСПРАВЛЕННОЕ сообщение для реферальной ссылки
-        self.REFERRAL_LINK_MESSAGE = "🔗 **Ваша персональная реферальная ссылка:**\n\nПриглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!"
+        self.REFERRAL_LINK_MESSAGE = "🔗 Ваша персональная реферальная ссылка:\n\nПриглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!"
         
         self.REFERRAL_STATS_MESSAGE = """Статистика ваших рефералов:
 {referrals_info}"""
@@ -500,6 +500,7 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.contact_callback, pattern="^contact$"))
             self.application.add_handler(CallbackQueryHandler(self.get_referral_link_callback, pattern="^get_referral$"))
             self.application.add_handler(CallbackQueryHandler(self.copy_ton_callback, pattern="^copy_ton_"))
+            self.application.add_handler(CallbackQueryHandler(self.copy_referral_callback, pattern="^copy_referral_"))
             self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
             # ИСПРАВЛЕНО: Обработчик текстовых сообщений для /confirmpay
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
@@ -545,33 +546,6 @@ class PassiveNFTBot:
         except Exception as e:
             logger.error(f"❌ Ошибка {operation_name}: {e}")
             return None
-
-    async def _get_all_users_for_broadcast(self):
-        """Получение всех пользователей для рассылки"""
-        try:
-            # Попытка получить всех пользователей из базы данных
-            if hasattr(self.database, 'get_all_users'):
-                return await self.database.get_all_users()
-            else:
-                # Fallback: получаем всех пользователей через get_subscribers()
-                if hasattr(self.database, 'get_subscribers'):
-                    users = await self.database.get_subscribers()
-                    # Преобразуем в нужный формат
-                    formatted_users = []
-                    for user in users:
-                        formatted_users.append({
-                            'user_id': user['user_id'],
-                            'username': user.get('username', ''),
-                            'first_name': user.get('first_name', '')
-                        })
-                    return formatted_users
-                
-                # Последний fallback: если ничего нет, возвращаем пустой список
-                logger.warning("⚠️ Не найдены функции получения пользователей в базе данных")
-                return []
-        except Exception as e:
-            logger.error(f"❌ Ошибка получения пользователей для рассылки: {e}")
-            return []
 
     async def clear_webhook_on_startup(self):
         """Очистка webhook перед запуском для решения конфликтов"""
@@ -1182,12 +1156,7 @@ class PassiveNFTBot:
             
         except Exception as e:
             logger.error(f"❌ Ошибка в confirmpay_command: {e}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            try:
-                if update.message:
-                    await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
-            except:
-                logger.error("Не удалось отправить сообщение об ошибке")
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
 
     async def confirmpay_subscription_type_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора типа подписки для подтверждения"""
@@ -1447,13 +1416,13 @@ class PassiveNFTBot:
             if query.from_user.id in self.confirmpay_pending_users:
                 del self.confirmpay_pending_users[query.from_user.id]
             
+            # ИСПРАВЛЕНИЕ: Создаем mock update объект для вызова confirmpay_command
+            mock_update = Update(update_id=0)
+            mock_update.message = query.message
+            mock_update.effective_user = query.from_user
+            
             # Возвращаемся к главному меню подтверждения оплаты
-            # Создаем псевдо-объект Update с сообщением для обратной совместимости
-            dummy_update = Update(
-                update_id=update.update_id,
-                message=query.message
-            )
-            await self.confirmpay_command(dummy_update, context)
+            await self.confirmpay_command(mock_update, context)
             
             logger.info(f"✅ Возврат в главное меню /confirmpay")
         except Exception as e:
@@ -1487,7 +1456,7 @@ Username: @{clean_username}
 Нажмите кнопку ниже для подтверждения подписки и отправки ссылки пользователю."""
                         
                         keyboard = [
-                            [InlineKeyboardButton("✅ Подтвердить подписку", callback_data=f"confirmpay_confirm_{clean_username}_{subscription_type.replace('-', '_')}")],
+                            [InlineKeyboardButton("✅ Подтвердить подписку", callback_data=f"confirmpay_confirm_{clean_username}_{subscription_type}")],
                             [InlineKeyboardButton("❌ Отмена", callback_data="confirmpay_back")]
                         ]
                         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1957,19 +1926,15 @@ Username: @{clean_username}
 
             # Генерация персональной реферальной ссылки
             referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-            
-            # Показываем сообщение о копировании ссылки
-            await query.message.edit_text(
-                f"🔗 **ВАША РЕФЕРАЛЬНАЯ ССЫЛКА СКОПИРОВАНА!**\n\n"
-                f"✅ Ссылка: {referral_link}\n\n"
-                f"💰 Как это работает:\n"
-                f"• Делитесь ссылкой с друзьями\n"
-                f"• Когда друг переходит по ссылке и оплачивает подписку, вы получаете 10% комиссии\n"
-                f"• Комиссия начисляется только за TON-подписки\n"
-                f"• Статистика обновляется в реальном времени\n\n"
-                f"🎯 Ссылка привязана к вашему аккаунту и действует постоянно!",
-                parse_mode='Markdown'
-            )
+            referral_link_text = f"{self.config.REFERRAL_LINK_MESSAGE}\n\n{referral_link}"
+
+            # Кнопки: копировать и назад
+            keyboard = [
+                [InlineKeyboardButton("📋 Скопировать ссылку", callback_data=f"copy_referral_{user.id}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.message.edit_text(referral_link_text, reply_markup=reply_markup)
             logger.info(f"✅ Реферальная ссылка отправлена пользователю {user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в get_referral_link_callback: {e}")
@@ -1990,6 +1955,25 @@ Username: @{clean_username}
             logger.info(f"✅ Адрес TON скопирован")
         except Exception as e:
             logger.error(f"❌ Ошибка в copy_ton_callback: {e}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def copy_referral_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик копирования реферальной ссылки"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_referral callback")
+        try:
+            query = update.callback_query
+            await query.answer()
+            user = query.from_user
+
+            # Генерация персональной реферальной ссылки
+            referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
+
+            await query.message.edit_text(
+                f"Реферальная ссылка скопирована!\n\n`{referral_link}`\n\nОтправьте эту ссылку друзьям, чтобы они стали вашими рефералами!"
+            )
+            logger.info(f"✅ Реферальная ссылка скопирована для пользователя {user.id}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в copy_referral_callback: {e}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2329,61 +2313,46 @@ Username: @{clean_username}
             # Формируем сообщение для рассылки
             broadcast_message = ' '.join(context.args)
             
-            # Получаем статистику пользователей
-            total_users = await self.safe_database_operation(
-                "получение количества пользователей для рассылки",
-                lambda: self.database.get_all_users_count()
+            # Получаем список всех пользователей для рассылки (без лимита)
+            all_users_data = await self.safe_database_operation(
+                "получение всех пользователей для рассылки",
+                lambda: self.database.get_all_users(limit=999999)
             )
             
-            if not total_users or total_users == 0:
-                await update.message.reply_text("❌ В базе данных нет зарегистрированных пользователей")
-                return
-
-            # Получаем список всех пользователей для рассылки
-            all_users = await self.safe_database_operation(
-                "получение пользователей для рассылки",
-                lambda: self._get_all_users_for_broadcast()
-            )
+            # Извлекаем только user_id из результата
+            all_users = [user['user_id'] for user in all_users_data if user.get('user_id')]
             
             if not all_users or len(all_users) == 0:
                 await update.message.reply_text("❌ В базе данных нет зарегистрированных пользователей")
                 return
-            
-            # Начинаем рассылку
+
             await update.message.reply_text(
-                f"✅ Начинаем рассылку...\n"
+                f"✅ Команда рассылки получена!\n"
                 f"📝 Текст: {broadcast_message}\n"
-                f"👥 Получателей: {len(all_users)}\n"
-                f"⏰ Ожидайте..."
+                f"👥 Всего пользователей: {len(all_users)}\n"
+                f"🚀 Начинаю рассылку..."
             )
             
-            # Выполняем рассылку всем пользователям
+            # Реальная рассылка сообщений
             sent_count = 0
             failed_count = 0
             
-            for user in all_users:
+            for user_id in all_users:
                 try:
-                    await context.bot.send_message(
-                        chat_id=user['user_id'],
-                        text=f"📢 **РАССЫЛКА**\n\n{broadcast_message}",
-                        parse_mode='Markdown'
-                    )
+                    await context.bot.send_message(chat_id=user_id, text=broadcast_message)
                     sent_count += 1
-                    # Небольшая пауза между отправками
-                    await asyncio.sleep(0.05)
-                except Exception as send_e:
+                    await asyncio.sleep(0.05)  # Небольшая задержка для избежания флуда
+                except Exception as e:
                     failed_count += 1
-                    logger.warning(f"Не удалось отправить сообщение пользователю {user['user_id']}: {send_e}")
+                    logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
             
-            # Отправляем отчет о рассылке
             await update.message.reply_text(
                 f"✅ Рассылка завершена!\n"
-                f"📝 Текст: {broadcast_message}\n"
-                f"✅ Отправлено: {sent_count}\n"
-                f"❌ Ошибки: {failed_count}\n"
-                f"👥 Всего получателей: {len(all_users)}"
+                f"📤 Отправлено: {sent_count}\n"
+                f"❌ Ошибок: {failed_count}\n"
+                f"👥 Всего пользователей: {len(all_users)}"
             )
-            logger.info(f"✅ Broadcast завершен: отправлено {sent_count}, ошибки {failed_count}, сообщение: {broadcast_message}")
+            logger.info(f"✅ Broadcast завершен: отправлено {sent_count}, ошибок {failed_count}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в broadcast_command: {e}")
