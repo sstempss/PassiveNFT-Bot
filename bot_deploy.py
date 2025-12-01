@@ -479,6 +479,10 @@ class PassiveNFTBot:
                 pattern="^confirmpay_stats$"
             ))
             self.application.add_handler(CallbackQueryHandler(
+                self.confirmpay_confirm_callback, 
+                pattern="^confirmpay_confirm_"
+            ))
+            self.application.add_handler(CallbackQueryHandler(
                 self.confirmpay_back_callback, 
                 pattern="^confirmpay_back$"
             ))
@@ -1208,6 +1212,8 @@ class PassiveNFTBot:
         """Обработчик подтверждения подписки"""
         logger.info(f"КОМАНДА /confirmpay подтверждения")
         try:
+            logger.info(f"🔍 Callback data: {update.callback_query.data}")
+            logger.info(f"👤 User: {update.callback_query.from_user.id} (@{update.callback_query.from_user.username})")
             query = update.callback_query
             await query.answer()
             
@@ -1420,13 +1426,28 @@ class PassiveNFTBot:
             if query.from_user.id in self.confirmpay_pending_users:
                 del self.confirmpay_pending_users[query.from_user.id]
             
-            # ИСПРАВЛЕНИЕ: Создаем mock update объект для вызова confirmpay_command
-            mock_update = Update(update_id=0)
-            mock_update.message = query.message
-            mock_update.effective_user = query.from_user
+            # ИСПРАВЛЕНИЕ: Показываем главное меню /confirmpay напрямую
+            keyboard = []
             
-            # Возвращаемся к главному меню подтверждения оплаты
-            await self.confirmpay_command(mock_update, context)
+            # Добавляем все доступные типы подписок
+            for subscription_type, price, description in self.config.SUBSCRIPTION_TYPES:
+                emoji, name = self.get_subscription_display_info(subscription_type)
+                keyboard.append([InlineKeyboardButton(f"{emoji} {price} - {name}", callback_data=f"confirmpay_select_{subscription_type}")])
+            
+            # Добавляем кнопки статистики и истории
+            keyboard.extend([
+                [InlineKeyboardButton("📊 Статистика", callback_data="confirmpay_stats")],
+                [InlineKeyboardButton("📜 История", callback_data="confirmpay_history")]
+            ])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.message.edit_text(
+                "💳 **ПОДТВЕРЖДЕНИЕ ОПЛАТЫ**\n\n"
+                "Выберите тип подписки для подтверждения оплаты:",
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.MARKDOWN
+            )
             
             logger.info(f"✅ Возврат в главное меню /confirmpay")
         except Exception as e:
@@ -2323,8 +2344,13 @@ Username: @{clean_username}
                 lambda: self.database.get_all_users(limit=999999)
             )
             
+            # ИСПРАВЛЕНИЕ: Проверяем, что получили данные и обрабатываем None
+            if not all_users_data:
+                await update.message.reply_text("❌ В базе данных нет зарегистрированных пользователей или произошла ошибка при получении данных")
+                return
+            
             # Извлекаем только user_id из результата
-            all_users = [user['user_id'] for user in all_users_data if user.get('user_id')]
+            all_users = [user['user_id'] for user in all_users_data if user and user.get('user_id')]
             
             if not all_users or len(all_users) == 0:
                 await update.message.reply_text("❌ В базе данных нет зарегистрированных пользователей")
