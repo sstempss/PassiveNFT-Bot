@@ -1426,19 +1426,18 @@ class PassiveNFTBot:
             if query.from_user.id in self.confirmpay_pending_users:
                 del self.confirmpay_pending_users[query.from_user.id]
             
-            # ИСПРАВЛЕНИЕ: Показываем главное меню /confirmpay напрямую
-            keyboard = []
-            
-            # Добавляем все доступные типы подписок
-            for subscription_type, price, description in self.config.SUBSCRIPTION_TYPES:
-                emoji, name = self.get_subscription_display_info(subscription_type)
-                keyboard.append([InlineKeyboardButton(f"{emoji} {price} - {name}", callback_data=f"confirmpay_select_{subscription_type}")])
-            
-            # Добавляем кнопки статистики и истории
-            keyboard.extend([
-                [InlineKeyboardButton("📊 Статистика", callback_data="confirmpay_stats")],
-                [InlineKeyboardButton("📜 История", callback_data="confirmpay_history")]
-            ])
+            # ИСПРАВЛЕНИЕ: Показываем главное меню /confirmpay напрямую (аналогично confirmpay_command)
+            keyboard = [
+                [InlineKeyboardButton("⭐ 25 звезд", callback_data="confirmpay_type_25_stars"),
+                 InlineKeyboardButton("⭐ 50 звезд", callback_data="confirmpay_type_50_stars")],
+                [InlineKeyboardButton("⭐ 75 звезд", callback_data="confirmpay_type_75_stars"),
+                 InlineKeyboardButton("⭐ 100 звезд", callback_data="confirmpay_type_100_stars")],
+                [InlineKeyboardButton("💎 4 TON", callback_data="confirmpay_type_4_ton"),
+                 InlineKeyboardButton("💎 7 TON", callback_data="confirmpay_type_7_ton")],
+                [InlineKeyboardButton("💎 13 TON", callback_data="confirmpay_type_13_ton")],
+                [InlineKeyboardButton("📊 История", callback_data="confirmpay_history"),
+                 InlineKeyboardButton("📈 Статистика", callback_data="confirmpay_stats")]
+            ]
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
@@ -1994,7 +1993,7 @@ Username: @{clean_username}
             referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
 
             await query.message.edit_text(
-                f"Реферальная ссылка скопирована!\n\n`{referral_link}`\n\nОтправьте эту ссылку друзьям, чтобы они стали вашими рефералами!"
+                f"🔗 **Ваша реферальная ссылка:**\n\n`{referral_link}`\n\n👆 Нажмите на ссылку для копирования"
             )
             logger.info(f"✅ Реферальная ссылка скопирована для пользователя {user.id}")
         except Exception as e:
