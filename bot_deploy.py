@@ -506,6 +506,7 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.get_referral_link_callback, pattern="^get_referral$"))
             self.application.add_handler(CallbackQueryHandler(self.copy_ton_callback, pattern="^copy_ton_"))
             self.application.add_handler(CallbackQueryHandler(self.copy_referral_callback, pattern="^copy_referral_"))
+            self.application.add_handler(CallbackQueryHandler(self.copy_text_callback, pattern="^copy_text_"))
             self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
             # ИСПРАВЛЕНО: Обработчик текстовых сообщений для /confirmpay
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
@@ -1278,18 +1279,10 @@ class PassiveNFTBot:
             
             # Отправляем ссылку пользователю
             try:
+                message_text = f"✅ ПОДПИСКА ПОДТВЕРЖДЕНА!\n\n🎯 Тип подписки: {subscription_type}\n💰 Сумма: {subscription_info['amount']} {subscription_info['method']}\n\n🔗 Ваша ссылка для доступа к закрытому каналу:\n{user_link}\n\n🎉 Добро пожаловать в PassiveNFT!"
                 await context.bot.send_message(
                     chat_id=user_data['id'],
-                    text=f"""✅ **ПОДПИСКА ПОДТВЕРЖДЕНА!**
-
-🎯 Тип подписки: {subscription_type}
-💰 Сумма: {subscription_info['amount']} {subscription_info['method']}
-
-🔗 Ваша ссылка для доступа к закрытому каналу:
-{user_link}
-
-🎉 Добро пожаловать в PassiveNFT!""",
-                    parse_mode='Markdown'
+                    text=message_text
                 )
                 logger.info(f"✅ Ссылка отправлена пользователю {username}")
             except Exception as e:
@@ -1309,7 +1302,7 @@ class PassiveNFTBot:
             )
             
             # Уведомляем админа об успешном подтверждении
-            confirm_text = f"""✅ **ПОДПИСКА ПОДТВЕРЖДЕНА УСПЕШНО!**
+            confirm_text = f"""✅ ПОДПИСКА ПОДТВЕРЖДЕНА УСПЕШНО!
 
 👤 Пользователь: @{username}
 💳 Тип: {subscription_type}
@@ -1323,7 +1316,7 @@ class PassiveNFTBot:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await query.message.edit_text(confirm_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.message.edit_text(confirm_text, reply_markup=reply_markup)
             logger.info(f"✅ Подписка подтверждена: {username} - {subscription_type}")
             
         except Exception as e:
@@ -1993,12 +1986,49 @@ Username: @{clean_username}
             # Генерация персональной реферальной ссылки
             referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
 
+            # Создаем кликабельную ссылку в стиле TON Wallet
+            clickable_link = f"[{referral_link}]({referral_link})"
+            
+            keyboard = [
+                [InlineKeyboardButton("📋 Копировать", callback_data=f"copy_text_{user.id}_{referral_link}")],
+                [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
             await query.message.edit_text(
-                f"🔗 **Ваша реферальная ссылка:**\n\n`{referral_link}`\n\n👆 Нажмите на ссылку для копирования"
+                f"🔗 **Ваша реферальная ссылка:**\n\n{clickable_link}\n\n👆 Нажмите на ссылку для копирования",
+                parse_mode='Markdown',
+                reply_markup=reply_markup
             )
             logger.info(f"✅ Реферальная ссылка скопирована для пользователя {user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в copy_referral_callback: {e}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+    async def copy_text_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик копирования текста ссылки в буфер обмена"""
+        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_text callback")
+        try:
+            query = update.callback_query
+            await query.answer("📋 Текст скопирован в буфер обмена!")
+            
+            data_parts = query.data.split('_')
+            if len(data_parts) >= 4:
+                referral_link = '_'.join(data_parts[3:])  # ссылка может содержать подчеркивания
+                
+                # Создаем простое текстовое сообщение с ссылкой
+                message_text = f"🔗 Ваша реферальная ссылка (скопируйте):\n\n{referral_link}"
+                keyboard = [
+                    [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.message.edit_text(message_text, reply_markup=reply_markup)
+                logger.info(f"✅ Текст ссылки отправлен пользователю {query.from_user.id}")
+            else:
+                await query.answer("❌ Ошибка в данных ссылки")
+        except Exception as e:
+            logger.error(f"❌ Ошибка в copy_text_callback: {e}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
