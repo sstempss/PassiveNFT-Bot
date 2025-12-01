@@ -568,7 +568,7 @@ class AsyncDatabaseManager:
         async with self._lock:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute("""
-                    SELECT user_id, username, created_at 
+                    SELECT id, username, created_at 
                     FROM users 
                     ORDER BY created_at DESC 
                     LIMIT ?
