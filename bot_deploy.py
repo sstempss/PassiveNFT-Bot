@@ -1211,14 +1211,18 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
             
-            # Извлекаем данные из callback_data: confirmpay_confirm_username_type
-            parts = query.data.split('_')
-            if len(parts) >= 4:
-                username = parts[2]
-                subscription_type = '_'.join(parts[3:])  # На случай если в типе есть подчеркивания
+            # Извлекаем username и тип подписки
+            data_parts = query.data.split('_')
+            if len(data_parts) >= 5:  # confirmpay_confirm_USERNAME_TYPE (минимум 5 частей)
+                username = data_parts[2]  # confirmpay_confirm_USERNAME_TYPE
+                subscription_type = data_parts[3] + '_' + data_parts[4]  # 25_stars
             else:
                 await query.answer("❌ Ошибка: неверный формат данных")
                 return
+
+            # Удаляем пользователя из ожидающих
+            if query.from_user.id in self.confirmpay_pending_users:
+                del self.confirmpay_pending_users[query.from_user.id]
             
             # Поиск пользователя в базе данных
             user_data = await self.safe_database_operation(
