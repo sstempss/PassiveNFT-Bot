@@ -1,22 +1,19 @@
-# Минимальный Dockerfile для мгновенного деплоя PassiveNFT Bot
-FROM python:3.14-slim
+# УБРАНЫ: build-essential, libpq-dev, perl - ЭКОНОМИТ 300MB+ и 10+ минут деплоя
 
-# Установка рабочей директории
+FROM python:3.14-slim
 WORKDIR /workspace
 
-# Только curl для webhook (минимум системных зависимостей)
+# УСТАНАВЛИВАЕМ ТОЛЬКО curl для webhook функциональности
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Копирование файла зависимостей Python
+# КОПИРУЕМ requirements.txt и устанавливаем зависимости
 COPY requirements.txt .
-
-# Установка Python зависимостей (без компиляции)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование всех файлов приложения
+# КОПИРУЕМ все файлы бота
 COPY . .
 
-# Запуск приложения
+# ЗАПУСКАЕМ бота
 CMD ["python", "bot_deploy.py"]
