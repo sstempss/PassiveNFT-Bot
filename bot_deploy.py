@@ -506,7 +506,7 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.get_referral_link_callback, pattern="^get_referral$"))
             self.application.add_handler(CallbackQueryHandler(self.copy_ton_callback, pattern="^copy_ton_"))
             self.application.add_handler(CallbackQueryHandler(self.copy_referral_callback, pattern="^copy_referral_"))
-            self.application.add_handler(CallbackQueryHandler(self.copy_text_callback, pattern="^copy_text_"))
+            # self.application.add_handler(CallbackQueryHandler(self.copy_text_callback, pattern="^copy_text_"))
             self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
             # ИСПРАВЛЕНО: Обработчик текстовых сообщений для /confirmpay
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
@@ -1985,20 +1985,10 @@ Username: @{clean_username}
 
             # Генерация персональной реферальной ссылки
             referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-
-            # Создаем кликабельную ссылку в стиле TON Wallet
-            clickable_link = f"[{referral_link}]({referral_link})"
-            
-            keyboard = [
-                [InlineKeyboardButton("📋 Копировать", callback_data=f"copy_text_{user.id}_{referral_link}")],
-                [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
             
             await query.message.edit_text(
-                f"🔗 **Ваша реферальная ссылка:**\n\n{clickable_link}\n\n👆 Нажмите на ссылку для копирования",
-                parse_mode='Markdown',
-                reply_markup=reply_markup
+                f"🔗 **Реферальная ссылка скопирована!**\n\n`{referral_link}`\n\nОтправьте эту ссылку друзьям для получения бонусов!",
+                parse_mode='Markdown'
             )
             logger.info(f"✅ Реферальная ссылка скопирована для пользователя {user.id}")
         except Exception as e:
