@@ -1405,7 +1405,7 @@ class PassiveNFTBot:
 
 👤 Необходимо отправить ссылку вручную через личные сообщения."""
             
-            for admin_id in self.config.ADMIN_USER_IDS:
+            for admin_id in self.ADMIN_USER_IDS:
                 await context.bot.send_message(admin_id, admin_text, parse_mode='Markdown')
             
             logger.info(f"ℹ️ Админ уведомлен о проблеме с @{username}")
@@ -1574,7 +1574,7 @@ Username: @{clean_username}
                         return
             
             # Обычная обработка сообщений
-            if "admin" in message_text.lower() and user_id in self.config.ADMIN_USER_IDS:
+            if "admin" in message_text.lower() and user_id in self.ADMIN_USER_IDS:
                 await self.admin_command(update, context)
             else:
                 await update.message.reply_text(
@@ -2037,10 +2037,10 @@ Username: @{clean_username}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # Показываем сообщение с тап-ту-копи на ссылку в правильном формате
+            # Показываем сообщение с тап-ту-копи на ссылку - упрощенный формат
             await query.message.edit_text(
                 f"🔗 Ваша персональная реферальная ссылка:\n\n"
-                f"[{referral_link}]({referral_link})\n\n"
+                f"[]({referral_link})\n\n"
                 f"💰 Приглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!\n\n"
                 f"💡 Нажмите на ссылку выше, чтобы скопировать её в буфер обмена",
                 parse_mode='Markdown',
