@@ -47,7 +47,6 @@ import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.error import BadRequest, TelegramError
-from telegram.constants import ParseMode
 import httpx
 import sqlite3
 
@@ -480,10 +479,6 @@ class PassiveNFTBot:
                 pattern="^confirmpay_stats$"
             ))
             self.application.add_handler(CallbackQueryHandler(
-                self.confirmpay_confirm_callback, 
-                pattern="^confirmpay_confirm_"
-            ))
-            self.application.add_handler(CallbackQueryHandler(
                 self.confirmpay_back_callback, 
                 pattern="^confirmpay_back$"
             ))
@@ -505,8 +500,6 @@ class PassiveNFTBot:
             self.application.add_handler(CallbackQueryHandler(self.contact_callback, pattern="^contact$"))
             self.application.add_handler(CallbackQueryHandler(self.get_referral_link_callback, pattern="^get_referral$"))
             self.application.add_handler(CallbackQueryHandler(self.copy_ton_callback, pattern="^copy_ton_"))
-            self.application.add_handler(CallbackQueryHandler(self.copy_referral_callback, pattern="^copy_referral_"))
-            # self.application.add_handler(CallbackQueryHandler(self.copy_text_callback, pattern="^copy_text_"))
             self.application.add_handler(CallbackQueryHandler(self.back_callback, pattern="^back$"))
             # ИСПРАВЛЕНО: Обработчик текстовых сообщений для /confirmpay
             self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))
@@ -552,6 +545,33 @@ class PassiveNFTBot:
         except Exception as e:
             logger.error(f"❌ Ошибка {operation_name}: {e}")
             return None
+
+    async def _get_all_users_for_broadcast(self):
+        """Получение всех пользователей для рассылки"""
+        try:
+            # Попытка получить всех пользователей из базы данных
+            if hasattr(self.database, 'get_all_users'):
+                return await self.database.get_all_users()
+            else:
+                # Fallback: получаем всех пользователей через get_subscribers()
+                if hasattr(self.database, 'get_subscribers'):
+                    users = await self.database.get_subscribers()
+                    # Преобразуем в нужный формат
+                    formatted_users = []
+                    for user in users:
+                        formatted_users.append({
+                            'user_id': user['user_id'],
+                            'username': user.get('username', ''),
+                            'first_name': user.get('first_name', '')
+                        })
+                    return formatted_users
+                
+                # Последний fallback: если ничего нет, возвращаем пустой список
+                logger.warning("⚠️ Не найдены функции получения пользователей в базе данных")
+                return []
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения пользователей для рассылки: {e}")
+            return []
 
     async def clear_webhook_on_startup(self):
         """Очистка webhook перед запуском для решения конфликтов"""
@@ -651,20 +671,13 @@ class PassiveNFTBot:
             # Генерируем персональную реферальную ссылку
             referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
             
-            link_text = f"""🔗 **ВАША РЕФЕРАЛЬНАЯ ССЫЛКА СОЗДАНА!**
+            link_text = f"""🔗 Ваша персональная реферальная ссылка:
 
-✅ Ссылка: {referral_link}
+{referral_link}
 
-💰 Как это работает:
-• Делитесь ссылкой с друзьями
-• Когда друг переходит по ссылке и оплачивает подписку, вы получаете 10% комиссии
-• Комиссия начисляется только за TON-подписки
-• Статистика обновляется в реальном времени
-
-🎯 Ссылка привязана к вашему аккаунту и действует постоянно!"""
+💰 Приглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!"""
             
             keyboard = [
-                [InlineKeyboardButton("📋 Скопировать ссылку", callback_data=f"get_referral")],
                 [InlineKeyboardButton("📊 Моя статистика", callback_data="referral_stats")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
             ]
@@ -1162,7 +1175,12 @@ class PassiveNFTBot:
             
         except Exception as e:
             logger.error(f"❌ Ошибка в confirmpay_command: {e}")
-            await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            try:
+                if update.message:
+                    await update.message.reply_text("❌ Произошла ошибка. Попробуйте позже.")
+            except:
+                logger.error("Не удалось отправить сообщение об ошибке")
 
     async def confirmpay_subscription_type_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик выбора типа подписки для подтверждения"""
@@ -1214,23 +1232,17 @@ class PassiveNFTBot:
         """Обработчик подтверждения подписки"""
         logger.info(f"КОМАНДА /confirmpay подтверждения")
         try:
-            logger.info(f"🔍 Callback data: {update.callback_query.data}")
-            logger.info(f"👤 User: {update.callback_query.from_user.id} (@{update.callback_query.from_user.username})")
             query = update.callback_query
             await query.answer()
             
-            # Извлекаем username и тип подписки
-            data_parts = query.data.split('_')
-            if len(data_parts) >= 5:  # confirmpay_confirm_USERNAME_TYPE (минимум 5 частей)
-                username = data_parts[2]  # confirmpay_confirm_USERNAME_TYPE
-                subscription_type = data_parts[3] + '_' + data_parts[4]  # 25_stars
+            # Извлекаем данные из callback_data: confirmpay_confirm_username_type
+            parts = query.data.split('_')
+            if len(parts) >= 4:
+                username = parts[2]
+                subscription_type = '_'.join(parts[3:])  # На случай если в типе есть подчеркивания
             else:
                 await query.answer("❌ Ошибка: неверный формат данных")
                 return
-
-            # Удаляем пользователя из ожидающих
-            if query.from_user.id in self.confirmpay_pending_users:
-                del self.confirmpay_pending_users[query.from_user.id]
             
             # Поиск пользователя в базе данных
             user_data = await self.safe_database_operation(
@@ -1274,15 +1286,23 @@ class PassiveNFTBot:
             )
             
             # Получаем ссылку для пользователя
-            private_links = self.config.PRIVATE_CHANNEL_LINKS
+            private_links = self.PRIVATE_CHANNEL_LINKS
             user_link = private_links.get(subscription_type, "https://t.me/passivenft_channel")
             
             # Отправляем ссылку пользователю
             try:
-                message_text = f"✅ ПОДПИСКА ПОДТВЕРЖДЕНА!\n\n🎯 Тип подписки: {subscription_type}\n💰 Сумма: {subscription_info['amount']} {subscription_info['method']}\n\n🔗 Ваша ссылка для доступа к закрытому каналу:\n{user_link}\n\n🎉 Добро пожаловать в PassiveNFT!"
                 await context.bot.send_message(
                     chat_id=user_data['id'],
-                    text=message_text
+                    text=f"""✅ **ПОДПИСКА ПОДТВЕРЖДЕНА!**
+
+🎯 Тип подписки: {subscription_type}
+💰 Сумма: {subscription_info['amount']} {subscription_info['method']}
+
+🔗 Ваша ссылка для доступа к закрытому каналу:
+{user_link}
+
+🎉 Добро пожаловать в PassiveNFT!""",
+                    parse_mode='Markdown'
                 )
                 logger.info(f"✅ Ссылка отправлена пользователю {username}")
             except Exception as e:
@@ -1302,7 +1322,7 @@ class PassiveNFTBot:
             )
             
             # Уведомляем админа об успешном подтверждении
-            confirm_text = f"""✅ ПОДПИСКА ПОДТВЕРЖДЕНА УСПЕШНО!
+            confirm_text = f"""✅ **ПОДПИСКА ПОДТВЕРЖДЕНА УСПЕШНО!**
 
 👤 Пользователь: @{username}
 💳 Тип: {subscription_type}
@@ -1316,7 +1336,7 @@ class PassiveNFTBot:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await query.message.edit_text(confirm_text, reply_markup=reply_markup)
+            await query.message.edit_text(confirm_text, reply_markup=reply_markup, parse_mode='Markdown')
             logger.info(f"✅ Подписка подтверждена: {username} - {subscription_type}")
             
         except Exception as e:
@@ -1420,27 +1440,13 @@ class PassiveNFTBot:
             if query.from_user.id in self.confirmpay_pending_users:
                 del self.confirmpay_pending_users[query.from_user.id]
             
-            # ИСПРАВЛЕНИЕ: Показываем главное меню /confirmpay напрямую (аналогично confirmpay_command)
-            keyboard = [
-                [InlineKeyboardButton("⭐ 25 звезд", callback_data="confirmpay_type_25_stars"),
-                 InlineKeyboardButton("⭐ 50 звезд", callback_data="confirmpay_type_50_stars")],
-                [InlineKeyboardButton("⭐ 75 звезд", callback_data="confirmpay_type_75_stars"),
-                 InlineKeyboardButton("⭐ 100 звезд", callback_data="confirmpay_type_100_stars")],
-                [InlineKeyboardButton("💎 4 TON", callback_data="confirmpay_type_4_ton"),
-                 InlineKeyboardButton("💎 7 TON", callback_data="confirmpay_type_7_ton")],
-                [InlineKeyboardButton("💎 13 TON", callback_data="confirmpay_type_13_ton")],
-                [InlineKeyboardButton("📊 История", callback_data="confirmpay_history"),
-                 InlineKeyboardButton("📈 Статистика", callback_data="confirmpay_stats")]
-            ]
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.message.edit_text(
-                "💳 **ПОДТВЕРЖДЕНИЕ ОПЛАТЫ**\n\n"
-                "Выберите тип подписки для подтверждения оплаты:",
-                reply_markup=reply_markup,
-                parse_mode=ParseMode.MARKDOWN
+            # Возвращаемся к главному меню подтверждения оплаты
+            # Создаем псевдо-объект Update с сообщением для обратной совместимости
+            dummy_update = Update(
+                update_id=update.update_id,
+                message=query.message
             )
+            await self.confirmpay_command(dummy_update, context)
             
             logger.info(f"✅ Возврат в главное меню /confirmpay")
         except Exception as e:
@@ -1474,7 +1480,7 @@ Username: @{clean_username}
 Нажмите кнопку ниже для подтверждения подписки и отправки ссылки пользователю."""
                         
                         keyboard = [
-                            [InlineKeyboardButton("✅ Подтвердить подписку", callback_data=f"confirmpay_confirm_{clean_username}_{subscription_type}")],
+                            [InlineKeyboardButton("✅ Подтвердить подписку", callback_data=f"confirmpay_confirm_{clean_username}_{subscription_type.replace('-', '_')}")],
                             [InlineKeyboardButton("❌ Отмена", callback_data="confirmpay_back")]
                         ]
                         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1944,15 +1950,13 @@ Username: @{clean_username}
 
             # Генерация персональной реферальной ссылки
             referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-            referral_link_text = f"{self.config.REFERRAL_LINK_MESSAGE}\n\n{referral_link}"
-
-            # Кнопки: копировать и назад
-            keyboard = [
-                [InlineKeyboardButton("📋 Скопировать ссылку", callback_data=f"copy_referral_{user.id}")],
-                [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text(referral_link_text, reply_markup=reply_markup)
+            
+            # Показываем сообщение с тап-ту-копи на ссылку
+            await query.message.edit_text(
+                f"🔗 Ваша персональная реферальная ссылка:\n\n"
+                f"{referral_link}\n\n"
+                f"💰 Приглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!"
+            )
             logger.info(f"✅ Реферальная ссылка отправлена пользователю {user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в get_referral_link_callback: {e}")
@@ -1973,52 +1977,6 @@ Username: @{clean_username}
             logger.info(f"✅ Адрес TON скопирован")
         except Exception as e:
             logger.error(f"❌ Ошибка в copy_ton_callback: {e}")
-            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
-
-    async def copy_referral_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик копирования реферальной ссылки"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_referral callback")
-        try:
-            query = update.callback_query
-            await query.answer()
-            user = query.from_user
-
-            # Генерация персональной реферальной ссылки
-            referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-            
-            await query.message.edit_text(
-                f"🔗 **Реферальная ссылка скопирована!**\n\n`{referral_link}`\n\nОтправьте эту ссылку друзьям для получения бонусов!",
-                parse_mode='Markdown'
-            )
-            logger.info(f"✅ Реферальная ссылка скопирована для пользователя {user.id}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка в copy_referral_callback: {e}")
-            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
-
-    async def copy_text_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик копирования текста ссылки в буфер обмена"""
-        logger.info(f"КОМАНДА ПОЛУЧЕНА: copy_text callback")
-        try:
-            query = update.callback_query
-            await query.answer("📋 Текст скопирован в буфер обмена!")
-            
-            data_parts = query.data.split('_')
-            if len(data_parts) >= 4:
-                referral_link = '_'.join(data_parts[3:])  # ссылка может содержать подчеркивания
-                
-                # Создаем простое текстовое сообщение с ссылкой
-                message_text = f"🔗 Ваша реферальная ссылка (скопируйте):\n\n{referral_link}"
-                keyboard = [
-                    [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                
-                await query.message.edit_text(message_text, reply_markup=reply_markup)
-                logger.info(f"✅ Текст ссылки отправлен пользователю {query.from_user.id}")
-            else:
-                await query.answer("❌ Ошибка в данных ссылки")
-        except Exception as e:
-            logger.error(f"❌ Ошибка в copy_text_callback: {e}")
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def back_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2078,7 +2036,7 @@ Username: @{clean_username}
                 info_text += f"• {users} пользователей → {channel_id}\n"
 
             info_text += "\n**Пригласительные ссылки:**\n"
-            for subscription_type, link in self.config.PRIVATE_CHANNEL_LINKS.items():
+            for subscription_type, link in self.PRIVATE_CHANNEL_LINKS.items():
                 info_text += f"• {subscription_type} → {link}\n"
 
             await update.message.reply_text(info_text)
@@ -2358,51 +2316,61 @@ Username: @{clean_username}
             # Формируем сообщение для рассылки
             broadcast_message = ' '.join(context.args)
             
-            # Получаем список всех пользователей для рассылки (без лимита)
-            all_users_data = await self.safe_database_operation(
-                "получение всех пользователей для рассылки",
-                lambda: self.database.get_all_users(limit=999999)
+            # Получаем статистику пользователей
+            total_users = await self.safe_database_operation(
+                "получение количества пользователей для рассылки",
+                lambda: self.database.get_all_users_count()
             )
             
-            # ИСПРАВЛЕНИЕ: Проверяем, что получили данные и обрабатываем None
-            if not all_users_data:
-                await update.message.reply_text("❌ В базе данных нет зарегистрированных пользователей или произошла ошибка при получении данных")
+            if not total_users or total_users == 0:
+                await update.message.reply_text("❌ В базе данных нет зарегистрированных пользователей")
                 return
-            
-            # Извлекаем только user_id из результата
-            all_users = [user['user_id'] for user in all_users_data if user and user.get('user_id')]
+
+            # Получаем список всех пользователей для рассылки
+            all_users = await self.safe_database_operation(
+                "получение пользователей для рассылки",
+                lambda: self._get_all_users_for_broadcast()
+            )
             
             if not all_users or len(all_users) == 0:
                 await update.message.reply_text("❌ В базе данных нет зарегистрированных пользователей")
                 return
-
+            
+            # Начинаем рассылку
             await update.message.reply_text(
-                f"✅ Команда рассылки получена!\n"
+                f"✅ Начинаем рассылку...\n"
                 f"📝 Текст: {broadcast_message}\n"
-                f"👥 Всего пользователей: {len(all_users)}\n"
-                f"🚀 Начинаю рассылку..."
+                f"👥 Получателей: {len(all_users)}\n"
+                f"⏰ Ожидайте..."
             )
             
-            # Реальная рассылка сообщений
+            # Выполняем рассылку всем пользователям
             sent_count = 0
             failed_count = 0
             
-            for user_id in all_users:
+            for user in all_users:
                 try:
-                    await context.bot.send_message(chat_id=user_id, text=broadcast_message)
+                    await context.bot.send_message(
+                        chat_id=user['user_id'],
+                        text=f"📢 **РАССЫЛКА**\n\n{broadcast_message}",
+                        parse_mode='Markdown'
+                    )
                     sent_count += 1
-                    await asyncio.sleep(0.05)  # Небольшая задержка для избежания флуда
-                except Exception as e:
+                    # Небольшая пауза между отправками
+                    await asyncio.sleep(0.05)
+                except Exception as send_e:
                     failed_count += 1
-                    logger.error(f"❌ Ошибка отправки пользователю {user_id}: {e}")
+                    logger.warning(f"Не удалось отправить сообщение пользователю {user['user_id']}: {send_e}")
             
+            # Отправляем отчет о рассылке
             await update.message.reply_text(
                 f"✅ Рассылка завершена!\n"
-                f"📤 Отправлено: {sent_count}\n"
-                f"❌ Ошибок: {failed_count}\n"
-                f"👥 Всего пользователей: {len(all_users)}"
+                f"📝 Текст: {broadcast_message}\n"
+                f"✅ Отправлено: {sent_count}\n"
+                f"❌ Ошибки: {failed_count}\n"
+                f"👥 Всего получателей: {len(all_users)}"
             )
-            logger.info(f"✅ Broadcast завершен: отправлено {sent_count}, ошибок {failed_count}")
+            logger.info(f"✅ Broadcast завершен: отправлено {sent_count}, ошибки {failed_count}, сообщение: {broadcast_message}")
 
         except Exception as e:
             logger.error(f"❌ Ошибка в broadcast_command: {e}")
@@ -2527,35 +2495,20 @@ Username: @{clean_username}
 
 # ФУНКЦИЯ ВЕБ-СЕРВЕРА ДЛЯ RENDER.COM
 async def start_web_server():
-    """HTTP сервер для health check - совместим с Timeweb Cloud"""
+    """Простой HTTP сервер для удовлетворения требований Render.com"""
     async def health_check(request):
-        return web.Response(
-            text='{"status": "healthy", "service": "PassiveNFT Bot"}', 
-            content_type='application/json',
-            status=200
-        )
-    
-    async def root_handler(request):
-        return web.Response(
-            text='{"message": "PassiveNFT Bot is running", "status": "ok"}', 
-            content_type='application/json',
-            status=200
-        )
+        return web.Response(text="Bot is running", status=200)
     
     app = web.Application()
-    app.router.add_get('/', root_handler)           # Главная страница
-    app.router.add_get('/health', health_check)     # Health check
-    app.router.add_get('/status', health_check)     # Альтернативный путь
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
     
-    # Используем порт 8000 (стандарт для Timeweb Cloud) или переменную окружения
-    port = int(os.environ.get('PORT', 8000))
-    host = '0.0.0.0'  # Слушаем на всех интерфейсах
-    
+    port = int(os.environ.get('PORT', 10000))
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, host, port)
+    site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    print(f"🚀 Web server started on {host}:{port}")
+    print(f"🚀 Web server started on port {port}")
 
 async def run_both():
     """Запускает бота и веб-сервер одновременно с улучшенной обработкой ошибок"""
