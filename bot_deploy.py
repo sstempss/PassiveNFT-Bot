@@ -405,6 +405,9 @@ class PassiveNFTBot:
         self.config = config
         self.database = AsyncDatabaseManager()  # Асинхронная база данных (ИСПРАВЛЕНИЕ ЗАВИСАНИЯ)
         self.application = None
+        # ИСПРАВЛЕНО: Добавляем прямые атрибуты для быстрого доступа
+        self.BOT_USERNAME = self.config.BOT_USERNAME
+        self.ADMIN_USER_IDS = self.config.ADMIN_USER_IDS
         # ДОБАВЛЕНО: Словарь для хранения ожидающих ввод username для /confirmpay
         self.confirmpay_pending_users = {}  # {user_id: subscription_type}
         
