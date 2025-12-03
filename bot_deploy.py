@@ -2527,20 +2527,35 @@ Username: @{clean_username}
 
 # ФУНКЦИЯ ВЕБ-СЕРВЕРА ДЛЯ RENDER.COM
 async def start_web_server():
-    """Простой HTTP сервер для удовлетворения требований Render.com"""
+    """HTTP сервер для health check - совместим с Timeweb Cloud"""
     async def health_check(request):
-        return web.Response(text="Bot is running", status=200)
+        return web.Response(
+            text='{"status": "healthy", "service": "PassiveNFT Bot"}', 
+            content_type='application/json',
+            status=200
+        )
+    
+    async def root_handler(request):
+        return web.Response(
+            text='{"message": "PassiveNFT Bot is running", "status": "ok"}', 
+            content_type='application/json',
+            status=200
+        )
     
     app = web.Application()
-    app.router.add_get('/', health_check)
-    app.router.add_get('/health', health_check)
+    app.router.add_get('/', root_handler)           # Главная страница
+    app.router.add_get('/health', health_check)     # Health check
+    app.router.add_get('/status', health_check)     # Альтернативный путь
     
-    port = int(os.environ.get('PORT', 10000))
+    # Используем порт 8000 (стандарт для Timeweb Cloud) или переменную окружения
+    port = int(os.environ.get('PORT', 8000))
+    host = '0.0.0.0'  # Слушаем на всех интерфейсах
+    
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', port)
+    site = web.TCPSite(runner, host, port)
     await site.start()
-    print(f"🚀 Web server started on port {port}")
+    print(f"🚀 Web server started on {host}:{port}")
 
 async def run_both():
     """Запускает бота и веб-сервер одновременно с улучшенной обработкой ошибок"""
