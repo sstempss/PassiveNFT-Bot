@@ -669,7 +669,7 @@ class PassiveNFTBot:
             )
             
             # Генерируем персональную реферальную ссылку
-            referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
+            referral_link = f"https://t.me/{self.BOT_USERNAME}?start=ref_{user.id}"
             
             link_text = f"""🔗 Ваша персональная реферальная ссылка:
 
@@ -2029,7 +2029,7 @@ Username: @{clean_username}
             user = query.from_user
 
             # Генерация персональной реферальной ссылки
-            referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
+            referral_link = f"https://t.me/{self.BOT_USERNAME}?start=ref_{user.id}"
             
             # Создаем кнопку "Назад"
             keyboard = [
@@ -2037,12 +2037,12 @@ Username: @{clean_username}
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            # Показываем сообщение с тап-ту-копи на ссылку - упрощенный формат
+            # Показываем сообщение с тап-ту-копи на ссылку - ОПТИМАЛЬНЫЙ ФОРМАТ
             await query.message.edit_text(
                 f"🔗 Ваша персональная реферальная ссылка:\n\n"
-                f"[]({referral_link})\n\n"
+                f"[📱 Нажмите для копирования]({referral_link})\n\n"
                 f"💰 Приглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!\n\n"
-                f"💡 Нажмите на ссылку выше, чтобы скопировать её в буфер обмена",
+                f"💡 Ссылка скопируется при нажатии",
                 parse_mode='Markdown',
                 reply_markup=reply_markup
             )
@@ -2179,7 +2179,7 @@ Username: @{clean_username}
 🆔 ID: {user.id}
 ⏰ Время: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}
 
-🤖 Бот: @{self.config.BOT_USERNAME}
+🤖 Бот: @{self.BOT_USERNAME}
 💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...
 
 ✅ Бот работает стабильно!"""
@@ -2284,7 +2284,7 @@ Username: @{clean_username}
 ⚡ Таймауты: Настроены
 📡 Соединение: Стабильное
 
-🤖 Бот: @{self.config.BOT_USERNAME}
+🤖 Бот: @{self.BOT_USERNAME}
 💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}..."""
                 
                 await update.message.reply_text(stats_text)
@@ -2545,7 +2545,7 @@ Username: @{clean_username}
             )
             logger.info("✅ Асинхронная база данных инициализирована")
             
-            logger.info(f"🤖 Бот: @{self.config.BOT_USERNAME}")
+            logger.info(f"🤖 Бот: @{self.BOT_USERNAME}")
             logger.info(f"💰 Кошелек: {self.config.TON_WALLET_ADDRESS[:10]}...{self.config.TON_WALLET_ADDRESS[-10:]}")
             logger.info("✅ РЕФЕРАЛЬНАЯ СИСТЕМА ПОЛНОСТЬЮ ИСПРАВЛЕНА И АКТИВНА")
             logger.info("✅ Персональные реферальные ссылки работают")
