@@ -673,7 +673,7 @@ class PassiveNFTBot:
             
             link_text = f"""🔗 Ваша персональная реферальная ссылка:
 
-{referral_link}
+[`{referral_link}`]({referral_link})
 
 💰 Приглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!"""
             
@@ -683,7 +683,7 @@ class PassiveNFTBot:
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await query.message.edit_text(link_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.message.edit_text(link_text, reply_markup=reply_markup, parse_mode='MarkdownV2')
             logger.info(f"✅ Реферальная ссылка создана для пользователя {user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в referral_create_link_callback: {e}")
@@ -1290,7 +1290,10 @@ class PassiveNFTBot:
             user_link = private_links.get(subscription_type, "https://t.me/passivenft_channel")
             
             # Отправляем ссылку пользователю
+            link_sent_success = False
             try:
+                logger.info(f"🔄 Попытка отправить ссылку пользователю {username} (ID: {user_data['id']})")
+                
                 await context.bot.send_message(
                     chat_id=user_data['id'],
                     text=f"""✅ **ПОДПИСКА ПОДТВЕРЖДЕНА!**
@@ -1304,9 +1307,14 @@ class PassiveNFTBot:
 🎉 Добро пожаловать в PassiveNFT!""",
                     parse_mode='Markdown'
                 )
-                logger.info(f"✅ Ссылка отправлена пользователю {username}")
+                
+                link_sent_success = True
+                logger.info(f"✅ Ссылка успешно отправлена пользователю {username}")
+                
             except Exception as e:
-                logger.warning(f"⚠️ Не удалось отправить ссылку пользователю {username}: {e}")
+                logger.error(f"❌ Ошибка отправки ссылки пользователю {username}: {e}")
+                logger.error(f"Детали ошибки: {traceback.format_exc()}")
+                link_sent_success = False
             
             # Создаем лог подтверждения
             log_data = {
@@ -1322,13 +1330,14 @@ class PassiveNFTBot:
             )
             
             # Уведомляем админа об успешном подтверждении
+            link_status = "✅ Отправлена успешно" if link_sent_success else "❌ Ошибка отправки"
             confirm_text = f"""✅ **ПОДПИСКА ПОДТВЕРЖДЕНА УСПЕШНО!**
 
 👤 Пользователь: @{username}
 💳 Тип: {subscription_type}
 💰 Сумма: {subscription_info['amount']} {subscription_info['method']}
 
-🔗 Ссылка отправлена пользователю
+🔗 Статус ссылки: {link_status}
 📝 Лог сохранен в базе данных"""
             
             keyboard = [
