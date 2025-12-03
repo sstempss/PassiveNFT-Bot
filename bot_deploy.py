@@ -651,27 +651,19 @@ class PassiveNFTBot:
             # Генерируем персональную реферальную ссылку
             referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
             
-            link_text = f"""🔗 **ВАША РЕФЕРАЛЬНАЯ ССЫЛКА СОЗДАНА!**
+            link_text = f"""🔗 Ваша персональная реферальная ссылка:
 
-📋 **Ваша ссылка:**
 `{referral_link}`
 
-💰 Как это работает:
-• Делитесь ссылкой с друзьями
-• Когда друг переходит по ссылке и оплачивает подписку, вы получаете 10% комиссии
-• Комиссия начисляется только за TON-подписки
-• Статистика обновляется в реальном времени
-
-🎯 Ссылка привязана к вашему аккаунту и действует постоянно!"""
+💰 Приглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!"""
             
             keyboard = [
-                [InlineKeyboardButton("📋 Скопировать ссылку", callback_data=f"get_referral")],
                 [InlineKeyboardButton("📊 Моя статистика", callback_data="referral_stats")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            await query.message.edit_text(link_text, reply_markup=reply_markup, parse_mode='Markdown')
+            await query.message.edit_text(link_text, reply_markup=reply_markup, parse_mode='MarkdownV2')
             logger.info(f"✅ Реферальная ссылка создана для пользователя {user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в referral_create_link_callback: {e}")
@@ -2033,16 +2025,23 @@ Username: @{clean_username}
             user = query.from_user
 
             # Генерация персональной реферальной ссылки
-            referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-            referral_link_text = f"{self.config.REFERRAL_LINK_MESSAGE}\n\n`{referral_link}`"
-
-            # Кнопки: копировать и назад
+            referral_link = f"https://t.me/{self.BOT_USERNAME}?start=ref_{user.id}"
+            
+            # Создаем кнопку "Назад"
             keyboard = [
-                [InlineKeyboardButton("📋 Скопировать ссылку", callback_data=f"copy_referral_{user.id}")],
-                [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
+                [InlineKeyboardButton("🔙 Назад", callback_data="back")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.message.edit_text(referral_link_text, reply_markup=reply_markup)
+            
+            # ИСПРАВЛЕННОЕ: Показываем саму ссылку в коде форматировании для копирования
+            await query.message.edit_text(
+                f"🔗 Ваша персональная реферальная ссылка:\n\n"
+                f"`{referral_link}`\n\n"
+                f"💰 Приглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!\n\n"
+                f"💡 Нажмите на код выше для копирования ссылки",
+                parse_mode='Markdown',
+                reply_markup=reply_markup
+            )
             logger.info(f"✅ Реферальная ссылка отправлена пользователю {user.id}")
         except Exception as e:
             logger.error(f"❌ Ошибка в get_referral_link_callback: {e}")
@@ -2074,19 +2073,15 @@ Username: @{clean_username}
             user = query.from_user
 
             # Генерация персональной реферальной ссылки
-            referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
-
-            # Создаем кликабельную ссылку в стиле TON Wallet
-            clickable_link = f"[{referral_link}]({referral_link})"
+            referral_link = f"https://t.me/{self.BOT_USERNAME}?start=ref_{user.id}"
             
             keyboard = [
-                [InlineKeyboardButton("📋 Копировать", callback_data=f"copy_text_{user.id}_{referral_link}")],
                 [InlineKeyboardButton("🔙 Назад", callback_data="referral")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await query.message.edit_text(
-                f"🔗 **Ваша реферальная ссылка:**\n\n`{referral_link}`\n\n👆 Нажмите на ссылку для копирования",
+                f"🔗 **Ваша реферальная ссылка:**\n\n`{referral_link}`\n\n👆 Нажмите на код для копирования",
                 parse_mode='Markdown',
                 reply_markup=reply_markup
             )
