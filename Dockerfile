@@ -1,3 +1,4 @@
+# 🚀 ОПТИМИЗИРОВАННЫЙ Dockerfile для PassiveNFT Bot
 # УБРАНЫ: build-essential, libpq-dev, perl - ЭКОНОМИТ 300MB+ и 10+ минут деплоя
 
 FROM python:3.14-slim
