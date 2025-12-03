@@ -850,8 +850,8 @@ class PassiveNFTBot:
         try:
             user = update.effective_user
             
-            # Проверяем админские права
-            if user.id not in self.config.ADMIN_USER_IDS:
+            # Проверяем админские права (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
             
@@ -1147,8 +1147,8 @@ class PassiveNFTBot:
         try:
             user = update.effective_user
             
-            # Проверяем админские права
-            if user.id not in self.config.ADMIN_USER_IDS:
+            # Проверяем админские права (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
             
@@ -1322,7 +1322,8 @@ class PassiveNFTBot:
                 'admin_id': query.from_user.id,
                 'subscription_type': subscription_type,
                 'username': username,
-                'link_id': f"{subscription_type}_{username}_{int(time.time())}"
+                'link_id': f"{subscription_type}_{username}_{int(time.time())}",
+                'link_sent_success': link_sent_success
             }
             
             await self.safe_database_operation(
@@ -1354,31 +1355,67 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
     
     async def send_safe_message_to_user(self, username: str, message_text: str, context: ContextTypes.DEFAULT_TYPE):
-        """Безопасная отправка сообщения пользователю с обработкой ошибок"""
+        """Безопасная отправка сообщения пользователю с несколькими fallback методами"""
         logger.info(f"🔄 Попытка отправить сообщение пользователю @{username}")
+        
+        # Метод 1: Прямой запрос по username через get_chat
         try:
-            # Сначала пытаемся получить user_id через метод get_chat
-            try:
-                chat = await context.bot.get_chat(f"@{username}")
-                if chat.type == 'private':
-                    # Прямая отправка по user_id
-                    await context.bot.send_message(
-                        chat_id=chat.id,
-                        text=message_text,
-                        parse_mode='Markdown'
-                    )
-                    logger.info(f"✅ Сообщение успешно отправлено пользователю @{username} через get_chat")
-                    return True
-            except Exception as e:
-                logger.error(f"❌ Ошибка при получении чата @{username}: {e}")
-            
-            # Если все методы не сработали
-            logger.error(f"❌ Невозможно отправить сообщение пользователю @{username} - не взаимодействовал с ботом или заблокировал")
-            return False
-            
+            logger.info(f"📤 Метод 1: Получение чата для @{username} через get_chat")
+            chat = await context.bot.get_chat(f"@{username}")
+            if chat and hasattr(chat, 'id') and chat.type == 'private':
+                await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=message_text,
+                    parse_mode='Markdown'
+                )
+                logger.info(f"✅ Сообщение отправлено @{username} через get_chat (ID: {chat.id})")
+                return True
         except Exception as e:
-            logger.error(f"❌ Общая ошибка отправки сообщения пользователю @{username}: {e}")
+            logger.warning(f"⚠️ Метод 1 не сработал для @{username}: {e}")
+        
+        # Метод 2: Попытка получить пользователя из базы данных
+        try:
+            logger.info(f"📤 Метод 2: Поиск пользователя @{username} в базе данных")
+            user_data = await self.safe_database_operation(
+                f"поиск пользователя {username}",
+                lambda: self.database.get_user_by_username(username)
+            )
+            
+            if user_data and user_data.get('id'):
+                await context.bot.send_message(
+                    chat_id=user_data['id'],
+                    text=message_text,
+                    parse_mode='Markdown'
+                )
+                logger.info(f"✅ Сообщение отправлено @{username} через БД (ID: {user_data['id']})")
+                return True
+        except Exception as e:
+            logger.warning(f"⚠️ Метод 2 не сработал для @{username}: {e}")
+        
+        # Метод 3: Попытка отправить через временное сообщение (если бот знает пользователя)
+        try:
+            logger.info(f"📤 Метод 3: Попытка временной отправки для @{username}")
+            # Отправляем сообщение админу с информацией о проблеме
+            admin_text = f"""⚠️ ПРОБЛЕМА С ОТПРАВКОЙ ССЫЛКИ ПОЛЬЗОВАТЕЛЮ @{username}
+
+🔗 Ссылка не может быть отправлена автоматически, так как:
+• Пользователь не взаимодействовал с ботом
+• Или заблокировал бота
+• Или у него настроены приватные настройки
+
+👤 Необходимо отправить ссылку вручную через личные сообщения."""
+            
+            for admin_id in self.config.ADMIN_USER_IDS:
+                await context.bot.send_message(admin_id, admin_text, parse_mode='Markdown')
+            
+            logger.info(f"ℹ️ Админ уведомлен о проблеме с @{username}")
             return False
+        except Exception as e:
+            logger.warning(f"⚠️ Метод 3 не сработал для @{username}: {e}")
+        
+        # Если все методы не сработали
+        logger.error(f"❌ Невозможно отправить сообщение @{username} всеми методами")
+        return False
 
     async def confirmpay_history_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик показа истории подтверждений"""
@@ -1473,9 +1510,10 @@ class PassiveNFTBot:
             query = update.callback_query
             await query.answer()
             
-            # Проверка админских прав для отмены
-            if query.from_user.id not in self.config.ADMIN_USER_IDS:
+            # Проверка админских прав для отмены (используем self.ADMIN_USER_IDS для надежности)
+            if query.from_user.id not in self.ADMIN_USER_IDS:
                 await query.edit_message_text("❌ Отмена подтверждения - доступно только админам.")
+                logger.warning(f"⚠️ Пользователь {query.from_user.id} попытался отменить подтверждение без прав админа")
                 return
             
             # Удаляем пользователя из ожидающих, если он там есть
@@ -1993,11 +2031,20 @@ Username: @{clean_username}
             # Генерация персональной реферальной ссылки
             referral_link = f"https://t.me/{self.config.BOT_USERNAME}?start=ref_{user.id}"
             
-            # Показываем сообщение с тап-ту-копи на ссылку
+            # Создаем кнопку "Назад"
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Показываем сообщение с тап-ту-копи на ссылку в правильном формате
             await query.message.edit_text(
                 f"🔗 Ваша персональная реферальная ссылка:\n\n"
-                f"{referral_link}\n\n"
-                f"💰 Приглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!"
+                f"[{referral_link}]({referral_link})\n\n"
+                f"💰 Приглашайте друзей и зарабатывайте 10% с каждой их оплаты подписки!\n\n"
+                f"💡 Нажмите на ссылку выше, чтобы скопировать её в буфер обмена",
+                parse_mode='Markdown',
+                reply_markup=reply_markup
             )
             logger.info(f"✅ Реферальная ссылка отправлена пользователю {user.id}")
         except Exception as e:
@@ -2061,8 +2108,8 @@ Username: @{clean_username}
         try:
             user = update.effective_user
 
-            # Проверяем, является ли пользователь админом
-            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            # Проверяем, является ли пользователь админом (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
@@ -2093,8 +2140,8 @@ Username: @{clean_username}
         try:
             user = update.effective_user
 
-            # Проверяем, является ли пользователь админом
-            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            # Проверяем, является ли пользователь админом (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
@@ -2121,8 +2168,8 @@ Username: @{clean_username}
         try:
             user = update.effective_user
 
-            # Проверяем, является ли пользователь админом
-            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            # Проверяем, является ли пользователь админом (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 return
 
@@ -2151,8 +2198,8 @@ Username: @{clean_username}
         try:
             user = update.effective_user
 
-            # Проверяем, является ли пользователь админом
-            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            # Проверяем, является ли пользователь админом (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к админ панели")
                 logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
                 return
@@ -2202,8 +2249,8 @@ Username: @{clean_username}
         try:
             user = update.effective_user
 
-            # Проверяем, является ли пользователь админом
-            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            # Проверяем, является ли пользователь админом (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к админ панели")
                 logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
                 return
@@ -2256,8 +2303,8 @@ Username: @{clean_username}
         try:
             user = update.effective_user
 
-            # Проверяем, является ли пользователь админом
-            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            # Проверяем, является ли пользователь админом (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к админ панели")
                 logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
                 return
@@ -2293,8 +2340,8 @@ Username: @{clean_username}
         try:
             user = update.effective_user
 
-            # Проверяем, является ли пользователь админом
-            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            # Проверяем, является ли пользователь админом (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к админ панели")
                 logger.warning(f"⚠️ Неавторизованная попытка доступа к админ панели от пользователя {user.id}")
                 return
@@ -2341,8 +2388,8 @@ Username: @{clean_username}
         try:
             user = update.effective_user
 
-            # Проверяем, является ли пользователь админом
-            if user.id not in self.config.ADMIN_USER_IDS and user.username not in self.config.get_admin_usernames():
+            # Проверяем, является ли пользователь админом (используем self.ADMIN_USER_IDS для надежности)
+            if user.id not in self.ADMIN_USER_IDS:
                 await update.message.reply_text("❌ У вас нет доступа к этой команде")
                 logger.warning(f"⚠️ Неавторизованная попытка доступа к /broadcast от пользователя {user.id}")
                 return
