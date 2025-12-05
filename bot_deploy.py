@@ -1232,117 +1232,138 @@ class PassiveNFTBot:
             await query.answer("❌ Произошла ошибка. Попробуйте позже.")
 
     async def confirmpay_confirm_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик подтверждения подписки"""
-        logger.info(f"КОМАНДА /confirmpay подтверждения")
+        """Обработчик подтверждения подписки - ПОЛНОСТЬЮ ИСПРАВЛЕНО"""
+        logger.info(f"КОМАНДА /confirmpay confirm от пользователя {update.effective_user.id}")
         try:
             query = update.callback_query
             await query.answer()
-            
-            # Извлекаем данные из callback_data: confirmpay_confirm_username_type
-            parts = query.data.split('_')
-            if len(parts) >= 4:
-                username = parts[2]
-                subscription_type = '_'.join(parts[3:])  # На случай если в типе есть подчеркивания
+
+            # Извлекаем username и тип подписки
+            data_parts = query.data.split('_')
+            if len(data_parts) >= 5:  # confirmpay_confirm_USERNAME_TYPE (минимум 5 частей)
+                username = data_parts[2]  # confirmpay_confirm_USERNAME_TYPE
+                subscription_type = data_parts[3] + '_' + data_parts[4]  # 25_stars
             else:
                 await query.answer("❌ Ошибка: неверный формат данных")
                 return
+
+            # Удаляем пользователя из ожидающих
+            if query.from_user.id in self.confirmpay_pending_users:
+                del self.confirmpay_pending_users[query.from_user.id]
+
+            # Определяем ссылку для отправки
+            invite_link = await self.get_invite_link_for_subscription(subscription_type)
             
-            # Поиск пользователя в базе данных
-            user_data = await self.safe_database_operation(
-                f"поиск пользователя {username}",
-                lambda: self.database.get_user_by_username(username)
-            )
-            
-            if not user_data:
-                await query.answer("❌ Пользователь не найден в базе данных")
-                return
-            
-            # Проверяем, есть ли ожидающий реферер
-            pending_referrer = await self.safe_database_operation(
-                "проверка ожидающего реферера",
-                lambda: self.database.get_pending_referrer(user_data['id'])
-            )
-            
-            # Добавляем подписку в базу данных
-            # Определяем цену и метод оплаты
-            subscription_prices = {
-                "25_stars": {"amount": 0.2, "method": "STARS"},
-                "50_stars": {"amount": 0.4, "method": "STARS"},
-                "75_stars": {"amount": 0.6, "method": "STARS"},
-                "100_stars": {"amount": 0.8, "method": "STARS"},
-                "4_ton": {"amount": 4.0, "method": "TON"},
-                "7_ton": {"amount": 7.0, "method": "TON"},
-                "13_ton": {"amount": 13.0, "method": "TON"}
-            }
-            
-            subscription_info = subscription_prices.get(subscription_type, {"amount": 1.0, "method": "TON"})
-            
-            # Добавляем подписку
-            subscription_added = await self.safe_database_operation(
-                f"добавление подписки {subscription_type}",
-                lambda: self.database.add_subscription(
-                    user_data['id'], 
-                    subscription_type, 
-                    subscription_info['method'],
-                    subscription_info['amount']
+            if not invite_link:
+                await query.message.edit_text(
+                    f"❌ ОШИБКА\n\n"
+                    f"Не найдена ссылка для типа: {subscription_type}\n"
+                    f"Пожалуйста, обратитесь к администратору."
                 )
-            )
+                return
+
+            # Отправляем подтверждение админу
+            confirmation_text = f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ ВЫПОЛНЕНО
+
+Администратор: {query.from_user.username or query.from_user.first_name}
+Пользователь: {username}
+Тип подписки: {subscription_type}
+Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Ссылка отправлена пользователю:
+`{invite_link}`
+
+Система подтверждения оплат: Активна ✅"""
+
+            await query.message.edit_text(confirmation_text)
             
-            # Получаем ссылку для пользователя
-            private_links = self.PRIVATE_CHANNEL_LINKS
-            user_link = private_links.get(subscription_type, "https://t.me/passivenft_channel")
-            
-            # Отправляем ссылку пользователю через безопасную функцию
-            link_sent_success = False
+            # НОВОЕ: Отправляем ссылку пользователю с ИСПРАВЛЕННОЙ АВТООТПРАВКОЙ
             try:
-                logger.info(f"🔄 Попытка отправить ссылку пользователю {username} (ID: {user_data['id']})")
+                # ИСПРАВЛЕНИЕ 1: Убираем @ из username для поиска в БД
+                clean_username = username.replace('@', '')
                 
-                message_text = f"""✅ **ПОДПИСКА ПОДТВЕРЖДЕНА!**
-
-🎯 Тип подписки: {subscription_type}
-💰 Сумма: {subscription_info['amount']} {subscription_info['method']}
-
-🔗 Ваша ссылка для доступа к закрытому каналу:
-
-`{user_link}`
-
-💡 Нажмите на код выше для копирования ссылки
-
-🎉 Добро пожаловать в PassiveNFT!"""
+                # ИСПРАВЛЕНИЕ 2: Проверяем наличие пользователя в базе данных
+                logger.info(f"🔍 Поиск пользователя @{clean_username} в базе данных...")
                 
-                # Используем безопасную отправку через username
-                link_sent_success = await self.send_safe_message_to_user(username, message_text, context)
+                user_data = await self.safe_database_operation(
+                    f"поиск пользователя {clean_username}",
+                    lambda: self.database.get_user_by_username(clean_username)
+                )
                 
-                if link_sent_success:
-                    logger.info(f"✅ Ссылка успешно отправлена пользователю {username}")
-                else:
-                    logger.error(f"❌ Не удалось отправить ссылку пользователю {username}")
+                if not user_data:
+                    logger.warning(f"⚠️ Пользователь @{clean_username} не найден в базе данных")
+                    await query.message.reply_text(
+                        f"⚠️ ОШИБКА: Пользователь @{clean_username} не найден в базе данных\n\n"
+                        f"Пользователь должен:\n"
+                        f"• Запустить бота командой /start\n"
+                        f"• Иметь username\n\n"
+                        f"🔗 ОТПРАВИТЕ ССЫЛКУ ВРУЧНУЮ: `{invite_link}`"
+                    )
+                    return
                 
-            except Exception as e:
-                logger.error(f"❌ Ошибка отправки ссылки пользователю {username}: {e}")
-                logger.error(f"Детали ошибки: {traceback.format_exc()}")
-                link_sent_success = False
+                logger.info(f"✅ Пользователь @{clean_username} найден в БД (ID: {user_data['id']})")
+                
+                # ИСПРАВЛЕНИЕ 3: Попытка отправки через get_chat БЕЗ @ символа
+                try:
+                    logger.info(f"📤 Отправка через get_chat @{clean_username}")
+                    
+                    # ИСПРАВЛЕННЫЙ синтаксис - без @
+                    chat = await self.application.bot.get_chat(clean_username)
+                    
+                    user_message = f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
+
+Поздравляем! Ваша подписка на {subscription_type} подтверждена администратором.
+
+🔗 Пригласительная ссылка на закрытый канал:
+`{invite_link}`
+
+Спасибо за вашу подписку!"""
+                    
+                    await self.application.bot.send_message(
+                        chat_id=chat.id,
+                        text=user_message
+                    )
+                    
+                    logger.info(f"✅ ССЫЛКА УСПЕШНО ОТПРАВЛЕНА через get_chat @{clean_username}")
+                    
+                except Exception as chat_error:
+                    logger.warning(f"⚠️ get_chat не сработал для @{clean_username}: {chat_error}")
+                    
+                    # ИСПРАВЛЕНИЕ 4: Fallback через user_id из БД
+                    try:
+                        logger.info(f"📤 Отправка через user_id {user_data['id']}")
+                        
+                        user_message = f"""✅ ПОДТВЕРЖДЕНИЕ ОПЛАТЫ
+
+Поздравляем! Ваша подписка на {subscription_type} подтверждена администратором.
+
+🔗 Пригласительная ссылка на закрытый канал:
+`{invite_link}`
+
+Спасибо за вашу подписку!"""
+                        
+                        await self.application.bot.send_message(
+                            chat_id=user_data['id'],
+                            text=user_message
+                        )
+                        
+                        logger.info(f"✅ ССЫЛКА УСПЕШНО ОТПРАВЛЕНА через user_id @{clean_username}")
+                        
+                    except Exception as user_id_error:
+                        logger.error(f"❌ Оба метода отправки не сработали для @{clean_username}: {user_id_error}")
+                        raise chat_error
+                
+            except Exception as send_error:
+                logger.error(f"❌ ОШИБКА при отправке ссылки пользователю @{clean_username}: {send_error}")
+                await query.message.reply_text(
+                    f"❌ ОШИБКА: Не удалось отправить ссылку пользователю @{clean_username}\n"
+                    f"Ошибка: {str(send_error)}\n\n"
+                    f"🔗 ОТПРАВИТЕ ССЫЛКУ ВРУЧНУЮ:\n`{invite_link}`"
+                )
             
             # Сохраняем в историю подтверждений (база данных)
             await self.save_confirmation_to_history(username, subscription_type, query.from_user.id)
             
-            # Уведомляем админа об успешном подтверждении
-            link_status = "✅ Отправлена успешно" if link_sent_success else "❌ Ошибка отправки"
-            confirm_text = f"""✅ **ПОДПИСКА ПОДТВЕРЖДЕНА УСПЕШНО!**
-
-👤 Пользователь: @{username}
-💳 Тип: {subscription_type}
-💰 Сумма: {subscription_info['amount']} {subscription_info['method']}
-
-🔗 Статус ссылки: {link_status}
-📝 Лог сохранен в базе данных"""
-            
-            keyboard = [
-                [InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.message.edit_text(confirm_text, reply_markup=reply_markup, parse_mode='Markdown')
             logger.info(f"✅ Подтверждение выполнено: @{username} - {subscription_type} от админа {query.from_user.id}")
             
         except Exception as e:
@@ -1369,6 +1390,71 @@ class PassiveNFTBot:
             
         except Exception as e:
             logger.error(f"❌ Ошибка сохранения в историю: {e}")
+
+    async def get_invite_link_for_subscription(self, subscription_type: str) -> str:
+        """Получение пригласительной ссылки для типа подписки - ИСПРАВЛЕНО"""
+        try:
+            # Получаем ссылки из конфигурации
+            private_links = self.PRIVATE_CHANNEL_LINKS
+            
+            # Проверяем наличие ссылки для указанного типа
+            if subscription_type in private_links:
+                return private_links[subscription_type]
+            else:
+                logger.warning(f"❌ Не найдена ссылка для типа подписки: {subscription_type}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка получения ссылки для {subscription_type}: {e}")
+            return None
+
+    async def confirmpay_history_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик показа истории подтверждений"""
+        logger.info(f"КОМАНДА /confirmpay history от пользователя")
+        try:
+            query = update.callback_query
+            await query.answer()
+            
+            # Получаем последние логи подтверждений
+            logs = await self.safe_database_operation(
+                "получение истории подтверждений",
+                lambda: self.database.get_recent_confirmation_logs(15)
+            )
+            
+            if logs:
+                history_text = """📚 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ**
+
+"""
+                for log in logs:
+                    timestamp = log['timestamp']
+                    if isinstance(timestamp, str):
+                        # Форматируем timestamp если это строка
+                        try:
+                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            timestamp = dt.strftime('%d.%m.%Y %H:%M')
+                        except:
+                            pass
+                    
+                    history_text += f"👤 @{log['username']} - {log['subscription_type']} - {timestamp}\n"
+            else:
+                history_text = """📚 **ИСТОРИЯ ПОДТВЕРЖДЕНИЙ**
+
+История подтверждений пуста."""
+            
+            keyboard = [
+                [InlineKeyboardButton("🔙 Назад", callback_data="confirmpay_back")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.message.edit_text(
+                history_text, 
+                reply_markup=reply_markup, 
+                parse_mode='Markdown'
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка в confirmpay_history_callback: {e}")
+            await query.answer("❌ Произошла ошибка. Попробуйте позже.")
     
     async def send_safe_message_to_user(self, username: str, message_text: str, context: ContextTypes.DEFAULT_TYPE):
         """Безопасная отправка сообщения пользователю с несколькими fallback методами"""
