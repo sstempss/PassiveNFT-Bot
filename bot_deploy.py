@@ -186,18 +186,6 @@ class SafeConfig:
             "https://t.me/+6XnGRwJd8rY2ZGUy"
         ]
 
-        # НОВОЕ: PRIVATE_CHANNEL_LINKS для исправленной системы /confirmpay
-        self.PRIVATE_CHANNEL_LINKS = {
-            "25_stars": "https://t.me/+xLVbmqzc3Dk2NWM6",
-            "50_stars": "https://t.me/+uxH6Ot8Kyu4wZDk6", 
-            "75_stars": "https://t.me/+diQh7MowVhIwYzVi",
-            "100_stars": "https://t.me/+6XnGRwJd8rY2ZGUy",
-            "150_stars": "https://t.me/+LaQZfJHeQPcyNjUy",
-            "50_ton": "https://t.me/+4BhdYzF2U65hOTIy",
-            "100_ton": "https://t.me/+O7KaTknXPDVlMjY6",
-            "150_ton": "https://t.me/+LaQZfJHeQPcyNjUy"
-        }
-
         # Настройки подписок - БЕЗ ЖИРНОГО ТЕКСТА
         self.SUBSCRIPTION_PLANS = [
             {
@@ -414,6 +402,22 @@ class PassiveNFTBot:
         # ДОБАВЛЕНО: История подтверждений для реальной работы статистики
         self.confirmation_history = []  # Список подтверждений [{username, subscription_type, admin_id, timestamp}]
         self.start_time = datetime.now()
+        
+        # КРИТИЧЕСКИ ВАЖНО: Инициализация ссылок для /confirmpay
+        self.PRIVATE_CHANNEL_LINKS = {
+            "25_stars": "https://t.me/+xLVbmqzc3Dk2NWM6",
+            "50_stars": "https://t.me/+uxH6Ot8Kyu4wZDk6", 
+            "75_stars": "https://t.me/+diQh7MowVhIwYzVi",
+            "100_stars": "https://t.me/+6XnGRwJd8rY2ZGUy",
+            "150_stars": "https://t.me/+LaQZfJHeQPcyNjUy",
+            "50_ton": "https://t.me/+4BhdYzF2U65hOTIy",
+            "100_ton": "https://t.me/+O7KaTknXPDVlMjY6",
+            "150_ton": "https://t.me/+LaQZfJHeQPcyNjUy"
+        }
+        
+        logger.info("✅ PRIVATE_CHANNEL_LINKS инициализированы для /confirmpay:")
+        for key in self.PRIVATE_CHANNEL_LINKS:
+            logger.info(f"  {key}: {self.PRIVATE_CHANNEL_LINKS[key][:50]}...")
         
         logger.info("🚀 PassiveNFT Bot - Стабильная версия с исправлениями инициализирован")
         self.setup_telegram_application()
@@ -1240,10 +1244,15 @@ class PassiveNFTBot:
 
             # Извлекаем username и тип подписки
             data_parts = query.data.split('_')
-            if len(data_parts) >= 5:  # confirmpay_confirm_USERNAME_TYPE (минимум 5 частей)
+            logger.info(f"🔍 DEBUG: callback_data = '{query.data}'")
+            logger.info(f"🔍 DEBUG: data_parts = {data_parts}")
+            
+            if len(data_parts) >= 4:  # confirmpay_confirm_USERNAME_TYPE (минимум 4 части)
                 username = data_parts[2]  # confirmpay_confirm_USERNAME_TYPE
-                subscription_type = data_parts[3] + '_' + data_parts[4]  # 25_stars
+                subscription_type = '_'.join(data_parts[3:])  # Получаем весь остаток как тип подписки
+                logger.info(f"🔍 DEBUG: Извлечен username = '{username}', subscription_type = '{subscription_type}'")
             else:
+                logger.error(f"❌ Недостаточно частей в callback_data: {len(data_parts)} < 4")
                 await query.answer("❌ Ошибка: неверный формат данных")
                 return
 
@@ -1254,7 +1263,10 @@ class PassiveNFTBot:
             # Определяем ссылку для отправки
             invite_link = await self.get_invite_link_for_subscription(subscription_type)
             
+            logger.info(f"🔍 DEBUG: Результат get_invite_link_for_subscription = '{invite_link}'")
+            
             if not invite_link:
+                logger.error(f"❌ Ссылка не найдена для subscription_type = '{subscription_type}'")
                 await query.message.edit_text(
                     f"❌ ОШИБКА\n\n"
                     f"Не найдена ссылка для типа: {subscription_type}\n"
@@ -1397,11 +1409,17 @@ class PassiveNFTBot:
             # Получаем ссылки из конфигурации
             private_links = self.PRIVATE_CHANNEL_LINKS
             
+            logger.info(f"🔍 DEBUG: Ищем ссылку для subscription_type = '{subscription_type}'")
+            logger.info(f"🔍 DEBUG: Доступные ссылки в конфигурации: {list(private_links.keys())}")
+            
             # Проверяем наличие ссылки для указанного типа
             if subscription_type in private_links:
-                return private_links[subscription_type]
+                link = private_links[subscription_type]
+                logger.info(f"✅ Найдена ссылка для {subscription_type}: {link}")
+                return link
             else:
-                logger.warning(f"❌ Не найдена ссылка для типа подписки: {subscription_type}")
+                logger.warning(f"❌ Не найдена ссылка для типа подписки: '{subscription_type}'")
+                logger.warning(f"❌ Доступные типы: {list(private_links.keys())}")
                 return None
                 
         except Exception as e:
