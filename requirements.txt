@@ -1,20 +1,16 @@
-# Основные зависимости
-python-telegram-bot==22.5
-aiohttp==3.9.1
-asyncio-throttle==1.0.2
+# Telegram Bot Framework
+python-telegram-bot>=22.0
+
+# HTTP сервер для webhook
 flask>=3.0.0
 
-# Дополнительные зависимости для стабильности
-httpx>=0.24.0,<1.0.0
-sqlite3-to-pandas>=1.0.4
+# HTTP клиент
+httpx>=0.25.0
 
-# Логирование и обработка ошибок
-structlog>=23.0.0
-sentry-sdk>=1.40.0
-
-# Работа с базой данных
+# База данных
 aiosqlite>=0.19.0
 
-# Дополнительные утилиты
+# Утилиты
 python-dotenv>=1.0.0
-click>=8.1.0
+pydantic>=2.0.0
+python-dateutil>=2.8.0
