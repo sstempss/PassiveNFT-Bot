@@ -1,23 +1,30 @@
-# 🚀 БЫСТРЫЙ Dockerfile для PassiveNFT Bot
+# 🚀 Professional Dockerfile для PassiveNFT Bot
+# Оптимизировано для TimeWeb деплоя
 FROM python:3.11-slim
 
-# Установка только необходимых системных пакетов
+# Установка минимальных системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /workspace
+# Рабочая директория
+WORKDIR /app
 
-# Установка Python зависимостей
+# Установка Python зависимостей сначала (для кэширования)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Копирование файлов бота
+# Копирование файлов приложения
 COPY . .
 
-# Переменные окружения
-ENV PYTHONPATH=/workspace
+# Переменные окружения для TimeWeb
+ENV PYTHONPATH=/app
+ENV FLASK_ENV=production
 ENV PORT=8000
 
-# Запуск
+# Экспорт порта
+EXPOSE 8000
+
+# Запуск через Flask wrapper (не напрямую через main)
 CMD ["python", "app.py"]
